@@ -1,5 +1,5 @@
-The Malaria Atlas Project's inherited blood disorder cartography code
-=====================================================================
+The Malaria Atlas Project's Duffy negativity cartography code
+=============================================================
 
 The purposes of this repository are to make our code available to people who would like to check or extend our work, and to synchronize it across multiple computers. Do not expect to be able to simply download and run anything here.
 

@@ -6,9 +6,9 @@
 from setuptools import setup
 from numpy.distutils.misc_util import Configuration
 import os
-config = Configuration('ibdw',parent_package=None,top_path=None)
+config = Configuration('duffy',parent_package=None,top_path=None)
 
-config.packages = ["ibdw"]
+config.packages = ["duffy"]
 if __name__ == '__main__':
     from numpy.distutils.core import setup
     setup(**(config.todict()))
