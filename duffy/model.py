@@ -3,6 +3,22 @@
 # License: Creative Commons BY-NC-SA
 ####################################
 
+# The idea: There are two mutations involved, one (Nr33) converting Fya to Fyb and one (Nr125) 
+# silencing expression. The latter mutation tends to occur only with the former, but the converse 
+# is not true.
+# 
+# The model for an individual chromosomal genotype is that the first mutation is a spatially-
+# correlated random field, but the second occurs independently with some probability in Africa
+# and another probability outside Africa.
+# 
+# There are two types of datapoints: 
+#     - one testing individuals for phenotype (a-b-), meaning both chromosomes have the silencing
+#       mutation.
+#     - one testing individuals for expression of Fya on either chromosome.
+# It's easy to make a likelihood model for either of these, just a bit complicated.
+# The maps we'll eventually want to make will be of (a-b-) frequency, meaining the postprocessing
+# function will need to close on model variables. The generic package doesn't currently support this.
+
 
 import numpy as np
 import pymc as pm
@@ -45,7 +61,7 @@ def ibd_covariance_submodel():
     return locals()
     
     
-def make_model(lon,lat,covariate_values,pos,neg,cpus=1):
+def make_model(lon,lat,covariate_values,pos,neg,pos_a,not_a,africa,cpus=1):
     """
     This function is required by the generic MBG code.
     """
@@ -86,6 +102,10 @@ def make_model(lon,lat,covariate_values,pos,neg,cpus=1):
     
     # Create the mean & its evaluation at the data locations.
     M, M_eval = trivial_means(logp_mesh)
+    
+    # Probability of mutation Nr33, given mutitaion Nr125 changing Fya to Fyb
+    africa_nr33 = pm.Beta('africa_nr33',1,1)
+    other_nr33 = pm.Beta('other_nr33',1,1)
 
     init_OK = False
     while not init_OK:
@@ -102,18 +122,16 @@ def make_model(lon,lat,covariate_values,pos,neg,cpus=1):
             # Loop over data clusters
             eps_p_f_d = []
             s_d = []
-            data_d = []
+            slices = []
 
             for i in xrange(len(pos)/grainsize+1):
                 sl = slice(i*grainsize,(i+1)*grainsize,None)
+                slices.append(sl)
                 # Nuggeted field in this cluster
                 eps_p_f_d.append(pm.Normal('eps_p_f_%i'%i, f[fi[sl]], 1./sp_sub['V'], value=pm.logit(s_hat[sl]),trace=False))
 
                 # The allele frequency
                 s_d.append(pm.Lambda('s_%i'%i,lambda lt=eps_p_f_d[-1]: invlogit(lt),trace=False))
-
-                # The observed allele frequencies
-                data_d.append(pm.Binomial('data_%i'%i, pos[sl]+neg[sl], s_d[-1], value=pos[sl], observed=True))
             
             # The field plus the nugget
             @pm.deterministic
@@ -126,7 +144,12 @@ def make_model(lon,lat,covariate_values,pos,neg,cpus=1):
             print 'Trying again: %s'%msg
             init_OK = False
             gc.collect()
-        
+
+    # The observed allele frequencies
+    data_d = []    
+    for i in xrange(len(eps_p_f_d)):
+        sl = slices[i]
+        data_d.append(pm.Binomial('data_%i'%i, pos[sl]+neg[sl], s_d[i], value=pos[sl], observed=True))
 
     out = locals()
     out.pop('sp_sub')

@@ -13,4 +13,4 @@ nugget_name = 'V'
 metadata_keys = ['fi','ti','ui']
 postproc = invlogit
 step_method_orders = {'f':(FieldStepper, )}
-non_cov_columns = {'lo_age': 'int', 'up_age': 'int', 'pos': 'float', 'neg': 'float'}
+non_cov_columns = {'lo_age': 'int', 'up_age': 'int', 'pos': 'float', 'neg': 'float', 'africa': 'int'}
