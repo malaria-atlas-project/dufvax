@@ -18,11 +18,6 @@ def ibd_covariance_submodel():
     A small function that creates the mean and covariance object
     of the random field.
     """
-
-    # Anisotropy parameters.
-    inc = pm.CircVonMises('inc', 0, 0)
-    sqrt_ecc = pm.Uniform('sqrt_ecc', 0, .95)
-    ecc = sqrt_ecc**2
     
     # The partial sill.
     amp = pm.Exponential('amp', .1, value=1.)
@@ -43,9 +38,9 @@ def ibd_covariance_submodel():
     
     # Create the covariance & its evaluation at the data locations.
     @pm.deterministic(trace=True)
-    def C(amp=amp, scale=scale, inc=inc, ecc=ecc, diff_degree=diff_degree):
+    def C(amp=amp, scale=scale, diff_degree=diff_degree):
         """A covariance function created from the current parameter values."""
-        return pm.gp.FullRankCovariance(pm.gp.cov_funs.matern.aniso_geo_rad, amp=amp, scale=scale, inc=inc, ecc=ecc, diff_degree=diff_degree)
+        return pm.gp.FullRankCovariance(pm.gp.cov_funs.matern.geo_rad, amp=amp, scale=scale, diff_degree=diff_degree)
     
     return locals()
     
