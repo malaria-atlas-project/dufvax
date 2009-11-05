@@ -26,6 +26,7 @@ import gc
 from map_utils import *
 from generic_mbg import *
 import generic_mbg
+from duffy import cut_matern
 
 __all__ = ['make_model']
 
@@ -56,7 +57,7 @@ def ibd_covariance_submodel():
     @pm.deterministic(trace=True)
     def C(amp=amp, scale=scale, diff_degree=diff_degree):
         """A covariance function created from the current parameter values."""
-        return pm.gp.FullRankCovariance(pm.gp.cov_funs.matern.geo_rad, amp=amp, scale=scale, diff_degree=diff_degree)
+        return pm.gp.FullRankCovariance(cut_matern, amp=amp, scale=scale, diff_degree=diff_degree)
     
     return locals()
     
