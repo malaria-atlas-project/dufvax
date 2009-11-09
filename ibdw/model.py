@@ -148,9 +148,6 @@ def make_model(lon,lat,covariate_values,pos,neg,cpus=1):
     s_d = []
     data_d = []
 
-    from IPython.Debugger import Pdb
-    Pdb(color_scheme='Linux').set_trace()   
-
     for i in xrange(len(pos)/grainsize+1):
         sl = slice(i*grainsize,(i+1)*grainsize,None)
         # Nuggeted field in this cluster
