@@ -30,16 +30,38 @@ from duffy import cut_matern
 
 __all__ = ['make_model']
 
+# The parameterization of the cut between western and eastern hemispheres.
+#
+# t = np.linspace(0,1,501)
+# 
+# def latfun(t):
+#     if t<.5:
+#         return (t*4-1)*np.pi
+#     else:
+#         return ((1-t)*4-1)*np.pi
+#         
+# def lonfun(t):
+#     if t<.25:
+#         return -28*np.pi/180.
+#     elif t < .5:
+#         return -28*np.pi/180. + (t-.25)*3.5
+#     else:
+#         return -169*np.pi/180.
+#     
+# lat = np.array([latfun(tau)*180./np.pi for tau in t])    
+# lon = np.array([lonfun(tau)*180./np.pi for tau in t])
+
+
 def ibd_covariance_submodel():
     """
     A small function that creates the mean and covariance object
     of the random field.
     """
-    
+        
     # The partial sill.
     amp = pm.Exponential('amp', .1, value=1.)
     
-    # The range parameter. Units are RADIANS. 
+    # The range parameters. Units are RADIANS. 
     # 1 radian = the radius of the earth, about 6378.1 km
     # scale = pm.Exponential('scale', 1./.08, value=.08)
     
@@ -66,6 +88,14 @@ def make_model(lon,lat,covariate_values,pos,neg,pos_a,not_a,africa,cpus=1):
     """
     This function is required by the generic MBG code.
     """
+    
+    for col in lon,lat,pos,neg:
+        if np.any(np.isnan(col)):
+            raise ValueError, 'NaN found in the following rows of the datafile: \n%s'%(np.where(np.isnan(col))[0])
+    
+    if np.any(pos+neg==0):
+        where_zero = np.where(pos+neg==0)[0]
+        raise ValueError, 'Pos+neg = 0 in the rows (starting from zero):\n %s'%where_zero
     
     # How many nuggeted field points to handle with each step method
     grainsize = 10

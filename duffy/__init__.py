@@ -20,4 +20,27 @@ nugget_name = 'V'
 metadata_keys = ['fi','ti','ui']
 postproc = invlogit
 step_method_orders = {'f':(FieldStepper, )}
-non_cov_columns = {'lo_age': 'int', 'up_age': 'int', 'pos': 'float', 'neg': 'float', 'africa': 'int'}
+non_cov_columns = {'africa': 'int',
+                    'n': 'int',
+                    'datatype': 'str',
+                    'genaa': 'float',
+                    'genab': 'float',
+                    'genbb': 'float',
+                    'gen00': 'float',
+                    'gena0': 'float',
+                    'genb0': 'float',
+                    'gfga': 'float',
+                    'gfgb': 'float',
+                    'gfg0': 'float',
+                    'pheab': 'float',
+                    'phea': 'float',
+                    'pheb': 'float',
+                    'phe0': 'float',
+                    'pos0': 'float',
+                    'negab': 'float',
+                    'aphea': 'float',
+                    'aphe0': 'float',
+                    'gfpa': 'float',
+                    'gfpb': 'float',
+                    'gfp0': 'float',
+                    'gfpb0': 'float'}
