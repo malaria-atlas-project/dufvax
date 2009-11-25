@@ -26,42 +26,21 @@ import gc
 from map_utils import *
 from generic_mbg import *
 import generic_mbg
-from duffy import cut_matern
 
 __all__ = ['make_model']
-
-# The parameterization of the cut between western and eastern hemispheres.
-#
-# t = np.linspace(0,1,501)
-# 
-# def latfun(t):
-#     if t<.5:
-#         return (t*4-1)*np.pi
-#     else:
-#         return ((1-t)*4-1)*np.pi
-#         
-# def lonfun(t):
-#     if t<.25:
-#         return -28*np.pi/180.
-#     elif t < .5:
-#         return -28*np.pi/180. + (t-.25)*3.5
-#     else:
-#         return -169*np.pi/180.
-#     
-# lat = np.array([latfun(tau)*180./np.pi for tau in t])    
-# lon = np.array([lonfun(tau)*180./np.pi for tau in t])
-
 
 def ibd_covariance_submodel():
     """
     A small function that creates the mean and covariance object
     of the random field.
     """
-        
+    
+    # from duffy import cut_matern
+    
     # The partial sill.
     amp = pm.Exponential('amp', .1, value=1.)
     
-    # The range parameters. Units are RADIANS. 
+    # The range parameter. Units are RADIANS. 
     # 1 radian = the radius of the earth, about 6378.1 km
     # scale = pm.Exponential('scale', 1./.08, value=.08)
     
@@ -79,31 +58,17 @@ def ibd_covariance_submodel():
     @pm.deterministic(trace=True)
     def C(amp=amp, scale=scale, diff_degree=diff_degree):
         """A covariance function created from the current parameter values."""
-        return pm.gp.FullRankCovariance(cut_matern, amp=amp, scale=scale, diff_degree=diff_degree)
+        return pm.gp.FullRankCovariance(pm.gp.matern.geo_rad, amp=amp, scale=scale, diff_degree=diff_degree)
     
     return locals()
     
-    
-def make_model(lon,lat,covariate_values,pos,neg,pos_a,not_a,africa,cpus=1):
+def make_model(lon,lat,covariate_values,n,africa,datatype,genaa,genab,genbb,gen00,gena0,genb0,gfga,gfgb,gfg0,pheab,phea,pheb,phe0,pos0,negab,aphea,aphe0,gfpa,gfpb,gfp0,gfpb0,cpus=1):
     """
     This function is required by the generic MBG code.
     """
-    
-    for col in lon,lat,pos,neg:
-        if np.any(np.isnan(col)):
-            raise ValueError, 'NaN found in the following rows of the datafile: \n%s'%(np.where(np.isnan(col))[0])
-    
-    if np.any(pos+neg==0):
-        where_zero = np.where(pos+neg==0)[0]
-        raise ValueError, 'Pos+neg = 0 in the rows (starting from zero):\n %s'%where_zero
-    
-    # How many nuggeted field points to handle with each step method
-    grainsize = 10
         
     # Non-unique data locations
     data_mesh = combine_spatial_inputs(lon, lat)
-    
-    s_hat = (pos+1.)/(pos+neg+2.)
     
     # Uniquify the data locations.
     locs = [(lon[0], lat[0])]
@@ -133,43 +98,40 @@ def make_model(lon,lat,covariate_values,pos,neg,pos_a,not_a,africa,cpus=1):
     
     # Create the mean & its evaluation at the data locations.
     M, M_eval = trivial_means(logp_mesh)
-    
-    # Probability of mutation Nr33, given mutitaion Nr125 changing Fya to Fyb
-    africa_nr33 = pm.Beta('africa_nr33',1,1)
-    other_nr33 = pm.Beta('other_nr33',1,1)
-
+    print data_mesh.shape
     init_OK = False
+    
     while not init_OK:
         try:        
             # Space-time component
             sp_sub = ibd_covariance_submodel()    
             covariate_dict, C_eval = cd_and_C_eval(covariate_values, sp_sub['C'], data_mesh, ui)
-
+        
             # The field evaluated at the uniquified data locations            
             f = pm.MvNormalCov('f', M_eval, C_eval)
             # Make f start somewhere a bit sane
             f.value = f.value - np.mean(f.value)
-        
+            
             # Loop over data clusters
             eps_p_f_d = []
-            s_d = []
-            slices = []
-
-            for i in xrange(len(pos)/grainsize+1):
-                sl = slice(i*grainsize,(i+1)*grainsize,None)
-                slices.append(sl)
-                # Nuggeted field in this cluster
-                eps_p_f_d.append(pm.Normal('eps_p_f_%i'%i, f[fi[sl]], 1./sp_sub['V'], value=pm.logit(s_hat[sl]),trace=False))
-
-                # The allele frequency
-                s_d.append(pm.Lambda('s_%i'%i,lambda lt=eps_p_f_d[-1]: invlogit(lt),trace=False))
+            p0_d = []
+        
+            for i in xrange(len(n)):
             
+                this_f = pm.Lambda('f_%i'%i, lambda f=f, i=i, fi=fi: f[fi[i]], trace=False)
+            
+                # Nuggeted field in this cluster
+                eps_p_f_d.append(pm.Normal('eps_p_f_%i'%i, this_f, 1./sp_sub['V'], value=0.,trace=False))
+        
+                # The allele frequency
+                p0_d.append(pm.Lambda('s_%i'%i,lambda lt=eps_p_f_d[-1]: np.asscalar(invlogit(lt)),trace=False))
+        
             # The field plus the nugget
             @pm.deterministic
             def eps_p_f(eps_p_fd = eps_p_f_d):
                 """Concatenated version of eps_p_f, for postprocessing & Gibbs sampling purposes"""
-                return np.concatenate(eps_p_fd)
-            
+                return np.hstack(eps_p_fd)
+        
             init_OK = True
         except pm.ZeroProbability, msg:
             print 'Trying again: %s'%msg
@@ -178,10 +140,45 @@ def make_model(lon,lat,covariate_values,pos,neg,pos_a,not_a,africa,cpus=1):
 
     # The observed allele frequencies
     data_d = []    
-    for i in xrange(len(eps_p_f_d)):
-        sl = slices[i]
-        data_d.append(pm.Binomial('data_%i'%i, pos[sl]+neg[sl], s_d[i], value=pos[sl], observed=True))
+    for i in xrange(len(n)):
+        p0=p0_d[i]
+        pb = .5
+        if datatype[i]=='gf':
+            pass
+        elif datatype[i]=='pos':
+            cur_obs = [pos0[i], negab[i]]
+            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0: (pb*p0)**2, trace=False)
+            n = np.sum(cur_obs)
+            data_d.append(pm.Binomial('data_%i'%i, p=p, n=n, value=pos0[i], observed=True))
+        elif datatype[i]=='aphe':
+            cur_obs = [aphea[i], aphe0[i]]
+            n = np.sum(cur_obs)
+            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0: (1-pb)**2+2*(1-pb)*pb, trace=False)
+            data_d.append(pm.Binomial('data_%i'%i, p=p, n=n, value=aphea[i], observed=True))
+        elif datatype[i]=='phe':
+            cur_obs = np.array([pheab[i],phea[i],pheb[i],phe0[i]])
+            n = np.sum(cur_obs)
+            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0: np.array([\
+                2*(1-pb)*pb*(1-p0),
+                2*(1-pb)*pb*p0+(1-pb)**2,
+                2*pb**2*(1-p0)*p0+(pb*(1-p0))**2,
+                (pb*p0)**2]), trace=False)
+            data_d.append(pm.Multinomial('data_%i'%i, p=p, n=n, value=cur_obs, observed=True))
+        elif datatype[i]=='gen':
+            cur_obs = np.array([genaa[i],genab[i],gen00[i],gena0[i],genb0[i],genbb[i]])
+            n = np.sum(cur_obs)
+            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0: np.array([\
+                (1-pb)**2,
+                2*(1-pb)*pb*(1-p0),
+                (pb*p0)**2,
+                2*(1-pb)*pb*p0,
+                2*pb**2*(1-p0)*p0,
+                (pb*(1-p0))**2]), trace=False)
+            data_d.append(pm.Multinomial('data_%i'%i, p=p, n=n, value=cur_obs, observed=True))
 
+        if np.any(np.isnan(cur_obs)):
+            raise ValueError
+    
     out = locals()
     out.pop('sp_sub')
     out.update(sp_sub)

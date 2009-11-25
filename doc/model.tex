@@ -43,8 +43,8 @@ The a/b switch mutation happens with probability $P(b=1)=p_{ab}(x)$, which shoul
     \end{description}
     \item[aphe*]: Phenotype data, Fya+/- only. Probabilities are:
     \begin{description}
-        \item[aphea] This can happen if the genotype is genaa, genab or gena0. The probability is $(1-p_{ab}(x))^2+2(1-p_{ab}(x))p_{ab}(x)(1-p_0(x))+2(1-p_{ab}(x))p_{ab}(x)p_0(x)$.
-        \item[aphe0] This can happen if the genotype is gen00, genb0 or genbb. The probability is $[p_{ab}(x)p_0(x)]^2+2p_{ab}(x)^2(1-p_0(x))p_0(x)+[p_{ab}(x)(1-p_0(x))]^2$.
+        \item[aphea] This can happen if the genotype is genaa, genab or gena0. The probability is $(1-p_{ab}(x))^2+2(1-p_{ab}(x))p_{ab}(x)$.
+        \item[aphe0] This can happen if the genotype is gen00, genb0 or genbb. The probability is one minus the probability of aphea.
     \end{description}
     \item[gf*]: Allele frequencies calculated by authors, raw data not available. Not bothering with likelihoods for these yet.
     \item[pos]: Molecular study looked only at promoter region. Probabilities are:

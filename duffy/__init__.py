@@ -3,6 +3,7 @@ from model import *
 from generic_mbg import invlogit, FieldStepper
 from cut_geographic import cut_geographic, hemisphere
 import duffy
+import pymc as pm
 import os
 root = os.path.split(duffy.__file__)[0]
 pm.gp.cov_funs.cov_utils.mod_search_path.append(root)
