@@ -18,39 +18,41 @@ This document is licensed under the Creative Commons attribution share-alike lic
 \section{Likelihood} % (fold)
 \label{sec:likelihood}
 
-The a/b switch mutation happens with probability $P(b=1)=p_{ab}(x)$, which should be much higher for $x$ in Africa. Given that $b=1$, the silencing mutation in the promoter region happens with probability $p_0(x)$. Hardy-Weinberg assumptions apply to the genotype frequencies.
+The a/b switch mutation happens with probability $P(b=1)=p_{ab}(x)$, which should be much higher for $x$ in Africa. Given that $b=1$, the silencing mutation in the promoter region happens with probability $p_0(x)$. Given that $b=0$, the silencing mutation happens with probability $p_1$, which is assumed to be a small, constant value. Hardy-Weinberg assumptions apply to the genotype frequencies.
 \begin{description}
     \item[lon,lat]: Standard 
     \item[n]: Sample size
     \item[africa]: Whether the point was taken in Africa
     \item[data]: The type of data
-    \item[gen*]: Genotype data. Probabilities are:
+    \item[gen*]: Genotype data. The haplotype frequencies are:
     \begin{description}
-        \item[genaa] $(1-p_{ab}(x))^2$
-        \item[genab] $2(1-p_{ab}(x))p_{ab}(x)(1-p_0(x))$ 
-        \item[gen00] $[p_{ab}(x)p_0(x)]^2$
-        \item[gena0] $2(1-p_{ab}(x))p_{ab}(x)p_0(x)$
-        \item[genb0] $2p_{ab}(x)^2(1-p_0(x))p_0(x)$
-        \item[genbb] $[p_{ab}(x)(1-p_0(x))]^2$
+        \item[gena] $(1-p_{ab}(x))(1-p_1)$
+        \item[genb] $p_{ab}(x)(1-p_0(x)$ 
+        \item[gen0] $p_{ab}(x)p_0(x)$
+        \item[gen1] $(1-p_{ab}(x))(1-p_1)$
     \end{description}
-    \item[phe*]: Phenotype data. Probabilities are:
-    
+    The genotype frequencies (genaa, genab, etc.) can be obtained using the standard Hardy-Weinberg formulas.
+    \item[phe*]: Phenotype data.
     \begin{description}
-        \item[pheab] This can only happen if the genotype is genab, so the probability is $2(1-p_{ab}(x))p_{ab}(x)(1-p_0(x))$
-        \item[phea] This can happen if the genotype is gena0 or genaa, so the probability is $2(1-p_{ab}(x))p_{ab}(x)p_0(x)+(1-p_{ab}(x))^2$
-        \item[pheb] This can happen if the genotype is genb0 or genbb, so the probability is $2p_{ab}(x)^2(1-p_0(x))p_0(x)+[p_{ab}(x)(1-p_0(x))]^2$
-        \item[phe0] This can only happen if the phenotype is gen00, so the probability is $[p_{ab}(x)p_0(x)]^2$
+        \item[pheab] This can only happen if the genotype is genab.
+        \item[phea] This can happen if the genotype is gena0, gena1 or genaa.
+        \item[pheb] This can happen if the genotype is genb0, genb1 or genbb.
+        \item[phe0] This can only happen if the phenotype is gen00, gen01 or gen11.
     \end{description}
-    \item[aphe*]: Phenotype data, Fya+/- only. Probabilities are:
+    \item[aphe*]: Phenotype data, Fya+/- only.
     \begin{description}
-        \item[aphea] This can happen if the genotype is genaa, genab or gena0. The probability is $(1-p_{ab}(x))^2+2(1-p_{ab}(x))p_{ab}(x)$.
-        \item[aphe0] This can happen if the genotype is gen00, genb0 or genbb. The probability is one minus the probability of aphea.
+        \item[aphea] This can happen if the genotype is genaa, genab, gena1 or gena0.
+        \item[aphe0] The complement of aphea.
     \end{description}
-    \item[gf*]: Allele frequencies calculated by authors, raw data not available. Not bothering with likelihoods for these yet.
-    \item[pos]: Molecular study looked only at promoter region. Probabilities are:
+    \item[bphe*] Phenotype data, Fyb+/- only.
     \begin{description}
-        \item[pos0]: This can only happen if the genotype is gen00, so the probability is $[p_{ab}(x)p_0(x)]^2$.
-        \item[negab]: The complement of pos0, so the probability is $1-[p_{ab}(x)p_0(x)]^2$.
+        \item[bpheb] This can happen if the genotype is genbb, genab, genb0 or genb1.
+        \item[bphe0] The complement of bpheb. 
+    \end{description}
+    \item[pos]: Molecular study looked only at promoter region.
+    \begin{description}
+        \item[pos0]: This can only happen if the genotype is gen00, gen01 or gen11.
+        \item[negab]: The complement of pos0.
     \end{description}
 \end{description}
 
