@@ -62,8 +62,29 @@ def ibd_covariance_submodel(suffix):
     C.__name__ = 'C_%s'%suffix
     
     return locals()
-    
-def make_model(lon,lat,covariate_values,n,africa,datatype,genaa,genab,genbb,gen00,gena0,genb0,gfga,gfgb,gfg0,pheab,phea,pheb,phe0,pos0,negab,aphea,aphe0,gfpa,gfpb,gfp0,gfpb0,cpus=1):
+        
+# =========================
+# = Haplotype frequencies =
+# =========================
+h_freqs = {'a': lambda pb, p0, p1: (1-pb)*(1-p1),
+            'b': lambda pb, p0, p1: pb*(1-p0),
+            '0': lambda pb, p0, p1: pb*p0,
+            '1': lambda pb, p0, p1: (1-pb)*p1}
+hfk = h_freqs.keys()
+hfv = h_freqs.values()
+
+# ========================
+# = Genotype frequencies =
+# ========================
+g_freqs = {}
+for i in xrange(4):
+    for j in xrange(i,4):
+        if i != j:
+            g_freqs[hfk[i]+hfk[j]] = g_freqs[hfk[j]+hfk[i]] = lambda pb, p0, p1: 2 * hfv[i](pb,p0,p1) * hfv[j](pb,p0,p1)
+        else:
+            g_freqs[hfk[i]*2] = lambda pb, p0, p1: hfv[i](pb,p0,p1)**2
+
+def make_model(lon,lat,covariate_values,n,africa,datatype,genaa,genab,genbb,gen00,gena0,genb0,gena1,genb1,gen01,gen11,pheab,phea,pheb,phe0,prom0,promab,aphea,aphe0,bpheb,bphe0,cpus=1):
     """
     This function is required by the generic MBG code.
     """
@@ -101,9 +122,13 @@ def make_model(lon,lat,covariate_values,n,africa,datatype,genaa,genab,genbb,gen0
     print data_mesh.shape
     init_OK = False
     
+    # Probability of mutation in the promoter region, given that the other thing is a.
+    p1 = pm.Beta('p1', 1, 1)
+    
     while not init_OK:
         try:        
             
+            # Mean functions of the random fields controlling a/b switch and promoter given b frequencies.
             M_b, M_eval_b = trivial_means(logp_mesh)
             M_b.__name__ = 'M_b'
             M_eval_b.__name__ = 'M_eval_b'
@@ -111,24 +136,23 @@ def make_model(lon,lat,covariate_values,n,africa,datatype,genaa,genab,genbb,gen0
             M_0.__name__ = 'M_0'
             M_eval_0.__name__ = 'M_eval_0'
             
-            # Space-time component
+            # Covariance functions.
             sp_sub_b = ibd_covariance_submodel('b')    
             sp_sub_0 = ibd_covariance_submodel('0')
-            
             covariate_dict_b, C_eval_b = cd_and_C_eval(covariate_values, sp_sub_b['C'], data_mesh, ui)
             C_eval_b.__name__ = 'C_eval_b'
             covariate_dict_0, C_eval_0 = cd_and_C_eval(covariate_values, sp_sub_0['C'], data_mesh, ui)
             C_eval_0.__name__ = 'C_eval_0'
         
-            # The field evaluated at the uniquified data locations            
+            # The fields evaluated at the uniquified data locations            
             fb = pm.MvNormalCov('fb', M_eval_b, C_eval_b)
             f0 = pm.MvNormalCov('f0', M_eval_0, C_eval_0)
 
-            # Make f start somewhere a bit sane
+            # Make the fs start somewhere a bit sane
             fb.value = fb.value - np.mean(fb.value)
             f0.value = f0.value - np.mean(f0.value)            
             
-            # Loop over data clusters
+            # Loop over data clusters, adding nugget and applying link function.
             eps_p_f0_d = []
             p0_d = []
             eps_p_fb_d = []
@@ -144,7 +168,7 @@ def make_model(lon,lat,covariate_values,n,africa,datatype,genaa,genab,genbb,gen0
                 pb_d.append(pm.Lambda('s_%i'%i,lambda lt=eps_p_fb_d[-1]: np.asscalar(invlogit(lt)),trace=False))
                 p0_d.append(pm.Lambda('s_%i'%i,lambda lt=eps_p_f0_d[-1]: np.asscalar(invlogit(lt)),trace=False))
         
-            # The field plus the nugget
+            # The fields plus the nugget
             @pm.deterministic
             def eps_p_fb(eps_p_fb_d = eps_p_fb_d):
                 """Concatenated version of eps_p_fb, for postprocessing & Gibbs sampling purposes"""
@@ -161,7 +185,7 @@ def make_model(lon,lat,covariate_values,n,africa,datatype,genaa,genab,genbb,gen0
             init_OK = False
             gc.collect()
 
-    # The observed allele frequencies
+    # The likelihoods.
     data_d = []    
     for i in xrange(len(n)):
 
@@ -169,41 +193,42 @@ def make_model(lon,lat,covariate_values,n,africa,datatype,genaa,genab,genbb,gen0
         p0 = p0_d[i]
         pb = pb_d[i]
         
-        if datatype[i]=='gf':
-            pass
-            
-        elif datatype[i]=='pos':
-            cur_obs = [pos0[i], negab[i]]
-            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0: (pb*p0)**2, trace=False)
+        if datatype[i]=='prom':
+            cur_obs = [prom0[i], promab[i]]
+            # Need to have either b and 0 or a and 1 on both chromosomes
+            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1: (pb*p0+(1-pb)*p1)**2, trace=False)
             n = np.sum(cur_obs)
-            data_d.append(pm.Binomial('data_%i'%i, p=p, n=n, value=pos0[i], observed=True))
+            data_d.append(pm.Binomial('data_%i'%i, p=p, n=n, value=prom0[i], observed=True))
             
         elif datatype[i]=='aphe':
             cur_obs = [aphea[i], aphe0[i]]
             n = np.sum(cur_obs)
-            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0: (1-pb)**2+2*(1-pb)*pb, trace=False)
+            # Need to have (a and not 1) on either chromosome
+            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1: 1-(1-(1-pb)*(1-p1))**2, trace=False)
             data_d.append(pm.Binomial('data_%i'%i, p=p, n=n, value=aphea[i], observed=True))
+
+        elif datatype[i]=='bphe':
+            cur_obs = [bphea[i], bphe0[i]]
+            n = np.sum(cur_obs)
+            # Need to have (b and not 0) on either chromosome
+            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1: 1-(1-pb*(1-p0))**2, trace=False)
+            data_d.append(pm.Binomial('data_%i'%i, p=p, n=n, value=aphea[i], observed=True))            
             
         elif datatype[i]=='phe':
             cur_obs = np.array([pheab[i],phea[i],pheb[i],phe0[i]])
             n = np.sum(cur_obs)
-            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0: np.array([\
-                2*(1-pb)*pb*(1-p0),
-                2*(1-pb)*pb*p0+(1-pb)**2,
-                2*pb**2*(1-p0)*p0+(pb*(1-p0))**2,
-                (pb*p0)**2]), trace=False)
+            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1: np.array([\
+                g_freqs['ab'](pb,p0,p1),
+                g_freqs['a0'](pb,p0,p1)+g_freqs['a1'](pb,p0,p1)+g_freqs['aa'](pb,p0,p1),
+                g_freqs['b0'](pb,p0,p1)+g_freqs['b1'](pb,p0,p1)+g_freqs['bb'](pb,p0,p1),
+                g_freqs['00'](pb,p0,p1)+g_freqs['01'](pb,p0,p1)+g_freqs['11'](pb,p0,p1)]), trace=False)
             data_d.append(pm.Multinomial('data_%i'%i, p=p, n=n, value=cur_obs, observed=True))
             
         elif datatype[i]=='gen':
-            cur_obs = np.array([genaa[i],genab[i],gen00[i],gena0[i],genb0[i],genbb[i]])
+            cur_obs = np.array([genaa[i],genab[i],gena0[i],gena1[i],genbb[i],genb0[i],genb1[i],gen00[i],gen01[i],gen11[i]])
             n = np.sum(cur_obs)
-            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0: np.array([\
-                (1-pb)**2,
-                2*(1-pb)*pb*(1-p0),
-                (pb*p0)**2,
-                2*(1-pb)*pb*p0,
-                2*pb**2*(1-p0)*p0,
-                (pb*(1-p0))**2]), trace=False)
+            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1, g_freqs=g_freqs: np.array([g_freqs[key](pb,p0,p1)\
+                                    for key in ['aa','ab','a0','a1','bb','b0','b1','00','01','11']]), trace=False)
             data_d.append(pm.Multinomial('data_%i'%i, p=p, n=n, value=cur_obs, observed=True))
             
         if np.any(np.isnan(cur_obs)):

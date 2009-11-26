@@ -28,7 +28,6 @@ def map_postproc(eps_p_fb, eps_p_f0):
     pb = invlogit(eps_p_fb)
     p0 = invlogit(eps_p_f0)
     pb = fast_inplace_mul(pb,p0)
-    print 'OK!'
     pb = fast_inplace_square(pb)
     return pb
 
@@ -53,18 +52,17 @@ non_cov_columns = {'africa': 'int',
                     'gen00': 'float',
                     'gena0': 'float',
                     'genb0': 'float',
-                    'gfga': 'float',
-                    'gfgb': 'float',
-                    'gfg0': 'float',
+                    'gena1': 'float',
+                    'genb1': 'float',
+                    'gen01': 'float',
+                    'gen11': 'float',
                     'pheab': 'float',
                     'phea': 'float',
                     'pheb': 'float',
                     'phe0': 'float',
-                    'pos0': 'float',
-                    'negab': 'float',
+                    'prom0': 'float',
+                    'promab': 'float',
                     'aphea': 'float',
                     'aphe0': 'float',
-                    'gfpa': 'float',
-                    'gfpb': 'float',
-                    'gfp0': 'float',
-                    'gfpb0': 'float'}
+                    'bpheb': 'float',
+                    'bphe0': 'float'}

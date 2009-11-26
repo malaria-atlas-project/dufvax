@@ -27,9 +27,9 @@ The a/b switch mutation happens with probability $P(b=1)=p_{ab}(x)$, which shoul
     \item[gen*]: Genotype data. The haplotype frequencies are:
     \begin{description}
         \item[gena] $(1-p_{ab}(x))(1-p_1)$
-        \item[genb] $p_{ab}(x)(1-p_0(x)$ 
+        \item[genb] $p_{ab}(x)(1-p_0(x))$ 
         \item[gen0] $p_{ab}(x)p_0(x)$
-        \item[gen1] $(1-p_{ab}(x))(1-p_1)$
+        \item[gen1] $(1-p_{ab}(x))$
     \end{description}
     The genotype frequencies (genaa, genab, etc.) can be obtained using the standard Hardy-Weinberg formulas.
     \item[phe*]: Phenotype data.
@@ -49,10 +49,10 @@ The a/b switch mutation happens with probability $P(b=1)=p_{ab}(x)$, which shoul
         \item[bpheb] This can happen if the genotype is genbb, genab, genb0 or genb1.
         \item[bphe0] The complement of bpheb. 
     \end{description}
-    \item[pos]: Molecular study looked only at promoter region.
+    \item[prom]: Molecular study looked only at promoter region.
     \begin{description}
-        \item[pos0]: This can only happen if the genotype is gen00, gen01 or gen11.
-        \item[negab]: The complement of pos0.
+        \item[prom0]: This can only happen if the genotype is gen00, gen01 or gen11.
+        \item[promab]: The complement of pos0.
     \end{description}
 \end{description}
 
