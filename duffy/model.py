@@ -84,10 +84,13 @@ for i in xrange(4):
         else:
             g_freqs[hfk[i]*2] = lambda pb, p0, p1: hfv[i](pb,p0,p1)**2
 
-def make_model(lon,lat,covariate_values,n,africa,datatype,genaa,genab,genbb,gen00,gena0,genb0,gena1,genb1,gen01,gen11,pheab,phea,pheb,phe0,prom0,promab,aphea,aphe0,bpheb,bphe0,cpus=1):
+def make_model(lon,lat,covariate_values,n,datatype,genaa,genab,genbb,gen00,gena0,genb0,gena1,genb1,gen01,gen11,pheab,phea,pheb,phe0,prom0,promab,aphea,aphe0,bpheb,bphe0,cpus=1):
     """
     This function is required by the generic MBG code.
     """
+    
+    # Step method granularity    
+    grainsize = 10    
         
     # Non-unique data locations
     data_mesh = combine_spatial_inputs(lon, lat)
@@ -123,7 +126,7 @@ def make_model(lon,lat,covariate_values,n,africa,datatype,genaa,genab,genbb,gen0
     init_OK = False
     
     # Probability of mutation in the promoter region, given that the other thing is a.
-    p1 = pm.Beta('p1', 1, 1)
+    p1 = pm.Uniform('p1', 0, .04)
     
     while not init_OK:
         try:        
@@ -141,7 +144,7 @@ def make_model(lon,lat,covariate_values,n,africa,datatype,genaa,genab,genbb,gen0
             sp_sub_0 = ibd_covariance_submodel('0')
             covariate_dict_b, C_eval_b = cd_and_C_eval(covariate_values, sp_sub_b['C'], data_mesh, ui)
             C_eval_b.__name__ = 'C_eval_b'
-            covariate_dict_0, C_eval_0 = cd_and_C_eval(covariate_values, sp_sub_0['C'], data_mesh, ui)
+            covariate_dict_0, C_eval_0 = cd_and_C_eval({}, sp_sub_0['C'], data_mesh, ui)
             C_eval_0.__name__ = 'C_eval_0'
         
             # The fields evaluated at the uniquified data locations            
@@ -158,15 +161,19 @@ def make_model(lon,lat,covariate_values,n,africa,datatype,genaa,genab,genbb,gen0
             eps_p_fb_d = []
             pb_d = []
         
-            for i in xrange(len(n)):
-                this_fb = pm.Lambda('fb_%i'%i, lambda f=fb, i=i, fi=fi: f[fi[i]], trace=False)
-                this_f0 = pm.Lambda('f0_%i'%i, lambda f=f0, i=i, fi=fi: f[fi[i]], trace=False)
+            for i in xrange(len(n)/grainsize+1):
+                sl = slice(i*grainsize,(i+1)*grainsize,None)
+                
+                this_fb = pm.Lambda('fb_%i'%i, lambda f=fb, sl=sl, fi=fi: f[fi[sl]], trace=False)
+                this_f0 = pm.Lambda('f0_%i'%i, lambda f=f0, sl=sl, fi=fi: f[fi[sl]], trace=False)
+
                 # Nuggeted field in this cluster
-                eps_p_fb_d.append(pm.Normal('eps_p_fb_%i'%i, this_fb, 1./sp_sub_b['V'], value=0.,trace=False))
-                eps_p_f0_d.append(pm.Normal('eps_p_f0_%i'%i, this_f0, 1./sp_sub_0['V'], value=0.,trace=False))
+                eps_p_fb_d.append(pm.Normal('eps_p_fb_%i'%i, this_fb, 1./sp_sub_b['V'], value=0.*this_fb.value,trace=False))
+                eps_p_f0_d.append(pm.Normal('eps_p_f0_%i'%i, this_f0, 1./sp_sub_0['V'], value=0.*this_f0.value,trace=False))
+                
                 # The allele frequency
-                pb_d.append(pm.Lambda('s_%i'%i,lambda lt=eps_p_fb_d[-1]: np.asscalar(invlogit(lt)),trace=False))
-                p0_d.append(pm.Lambda('s_%i'%i,lambda lt=eps_p_f0_d[-1]: np.asscalar(invlogit(lt)),trace=False))
+                pb_d.append(pm.Lambda('pb_%i'%i,lambda lt=eps_p_fb_d[-1]: invlogit(lt),trace=False))
+                p0_d.append(pm.Lambda('p0_%i'%i,lambda lt=eps_p_f0_d[-1]: invlogit(lt),trace=False))
         
             # The fields plus the nugget
             @pm.deterministic
@@ -189,9 +196,12 @@ def make_model(lon,lat,covariate_values,n,africa,datatype,genaa,genab,genbb,gen0
     data_d = []    
     for i in xrange(len(n)):
 
+        sl_ind = int(i/grainsize)
+        sub_ind = i%grainsize
+
         # See duffy/doc/model.tex for explanations of the likelihoods.
-        p0 = p0_d[i]
-        pb = pb_d[i]
+        p0 = pm.Lambda('p0_%i_%i'%(sl_ind,sub_ind), lambda p=p0_d[sl_ind], j=sub_ind: p[j], trace=False)
+        pb = pm.Lambda('pb_%i_%i'%(sl_ind,sub_ind), lambda p=pb_d[sl_ind], j=sub_ind: p[j], trace=False)
         
         if datatype[i]=='prom':
             cur_obs = [prom0[i], promab[i]]
@@ -203,12 +213,12 @@ def make_model(lon,lat,covariate_values,n,africa,datatype,genaa,genab,genbb,gen0
         elif datatype[i]=='aphe':
             cur_obs = [aphea[i], aphe0[i]]
             n = np.sum(cur_obs)
-            # Need to have (a and not 1) on either chromosome
+            # Need to have (a and not 1) on either chromosome, or not (not (a and not 1) on both chromosomes)
             p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1: 1-(1-(1-pb)*(1-p1))**2, trace=False)
             data_d.append(pm.Binomial('data_%i'%i, p=p, n=n, value=aphea[i], observed=True))
 
         elif datatype[i]=='bphe':
-            cur_obs = [bphea[i], bphe0[i]]
+            cur_obs = [bpheb[i], bphe0[i]]
             n = np.sum(cur_obs)
             # Need to have (b and not 0) on either chromosome
             p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1: 1-(1-pb*(1-p0))**2, trace=False)
@@ -236,7 +246,7 @@ def make_model(lon,lat,covariate_values,n,africa,datatype,genaa,genab,genbb,gen0
         if datatype[i] in ['phe','gen']:
             np.testing.assert_almost_equal(p.value.sum(), 1)
     
-    covariate_dict = covariate_dict_0
+    covariate_dicts = {'eps_p_fb': covariate_dict_b, 'eps_p_f0': covariate_dict_0}
             
     out = locals()
     # out.pop('sp_sub_b')

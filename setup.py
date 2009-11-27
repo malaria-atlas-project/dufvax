@@ -9,6 +9,7 @@ import os
 config = Configuration('duffy',parent_package=None,top_path=None)
 
 config.add_extension(name='cut_geographic',sources=['duffy/cut_geographic.f'])
+config.add_extension(name='postproc_utils',sources=['duffy/postproc_utils.f'])
 
 config.packages = ["duffy"]
 

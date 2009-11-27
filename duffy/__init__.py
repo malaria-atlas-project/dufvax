@@ -1,8 +1,9 @@
 # from mcmc import *
 from model import *
-from generic_mbg import invlogit, FieldStepper, fast_inplace_mul, fast_inplace_square
+from generic_mbg import FieldStepper, thread_partition_array
 from cut_geographic import cut_geographic, hemisphere
 import duffy
+from postproc_utils import duffy_postproc
 import pymc as pm
 import os
 root = os.path.split(duffy.__file__)[0]
@@ -16,8 +17,7 @@ fs_have_nugget = {'eps_p_fb': True, 'eps_p_f0': True}
 nugget_labels = {'eps_p_fb': 'V_b', 'eps_p_f0': 'V_0'}
 M_labels = {'eps_p_fb': 'M_b', 'eps_p_f0': 'M_0'}
 C_labels = {'eps_p_fb': 'C_b', 'eps_p_f0': 'C_0'}
-x_label = 'data_mesh'
-covariate_pertenencies = {'eps_p_fb': ['africa'], 'eps_p_f0': []}
+x_labels = {'eps_p_fb': 'data_mesh', 'eps_p_f0': 'data_mesh'}
 diags_safe = {'eps_p_fb': True, 'eps_p_f0': True}
 
 def map_postproc(eps_p_fb, eps_p_f0, p1):
@@ -26,14 +26,12 @@ def map_postproc(eps_p_fb, eps_p_f0, p1):
     Fast and threaded.
     TODO: Fortran-sticate this.
     """
-    # Probability of a/b switch
-    pb = invlogit(eps_p_fb)
     
-    # Negativity contributions from b individuals
-    p0 = invlogit(eps_p_f0)
+    cmin, cmax = thread_partition_array(eps_p_fb)        
     
-    # All individuals Duffy negative at both chromosomes
-    return (pb*p0 + (1-pb)*p1)**2
+    pm.map_noreturn(duffy_postproc, [(eps_p_fb, eps_p_f0, p1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
+    
+    return eps_p_fb
 
 def validate_postproc(**non_cov_columns):
     """
@@ -46,6 +44,8 @@ metadata_keys = ['fi','ti','ui']
 def mcmc_init(M):
     M.use_step_method(FieldStepper, M.fb, M.V_b, M.C_eval_b, M.M_eval_b, M.logp_mesh, M.eps_p_fb, M.ti)
     M.use_step_method(FieldStepper, M.f0, M.V_0, M.C_eval_0, M.M_eval_0, M.logp_mesh, M.eps_p_f0, M.ti)
+    for tup in zip(M.eps_p_fb_d, M.eps_p_f0_d):
+        M.use_step_method(pm.AdaptiveMetropolis, tup)
 
 non_cov_columns = { 'n': 'int',
                     'datatype': 'str',

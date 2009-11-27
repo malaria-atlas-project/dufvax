@@ -1,3 +1,9 @@
+! Author: Anand Patil
+! Date: 6 Feb 2009
+! License: Creative Commons BY-NC-SA
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
 ! # def latfun(t):
 ! #     if t<.5:
 ! #         return (t*4-1)*np.pi
