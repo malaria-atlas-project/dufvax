@@ -4,9 +4,13 @@
 \usepackage{pdfsync} 
 \usepackage{amsfonts}
 \usepackage{amsmath} 
+\usepackage{garamond}
+\usepackage[colorlinks]{hyperref}
+\usepackage[T1]{fontenc} 
 \begin{document}
 
-\title{Notes on the Duffy model}
+\garamond
+\title{Methods SI for duffy paper}
 \author{Anand Patil}
 \maketitle
 
@@ -15,7 +19,42 @@
 This document is licensed under the Creative Commons attribution share-alike license, see \texttt{LICENSE} in the root directory. Copyright \copyright\ 2009 Anand Patil
 % section license (end)
 
-\section{Likelihood} % (fold)
+\section{Statistical analysis} 
+\subsection{Random fields}
+The model targets two spatially-varying allele frequencies, the frequency of the Fyb mutation and the frequency of the silencing mutation in the promoter region within Fyb individuals. These are denoted $p_{ab}(x)$ and $p_0(x)$ respectively, where $x$ is a location. A third allele frequency, the frequency of the silencing mutation within Fya individuals, is modeled as a small constant denoted $p_1$. The model for these allele frequencies is as follows:
+\begin{eqnarray*}
+    m_{ab} \sim \textup{Normal}(0,10000) \\
+    m_0 \sim \textup{Normal}(0,10000)\\
+    \beta_{\mathtt{africa}} \sim \textup{Normal}(0,10000)\\
+    p_1\sim\textup{Uniform}(0,.4)\\
+    \\
+    M_{ab}(x) = \beta_{\textup{africa}} 1_{x\textup{\ in\ africa}} + m_{ab}\\
+    M_0(x) = m_0\\
+    \\
+    \phi_{ab}\sim\textup{Exponential}(.1)\\
+    \phi_{0}\sim\textup{Exponential}(.1)\\
+    \theta_{ab}\sim\textup{Exponential}(.1)\\
+    \theta_{0}\sim\textup{Exponential}(.1)\\
+    \nu_{ab}\sim\textup{Uniform}(0,3)\\
+    \nu_{0}\sim\textup{Uniform}(0,3)\\
+    V_{ab}\sim\textup{Exponential}(.1)\\
+    V_0\sim\textup{Exponential}(.1)\\
+    \\
+    C_{ab}(x,y) = \phi_{ab}\textup{Mat\`ern}(d(x,y)/\theta_{ab};\nu_{ab})+V_{ab}1_{x=y}\\
+    C_{0}(x,y) = \phi_{0}\textup{Mat\`ern}(d(x,y)/\theta_{0};\nu_{0})+V_{0}1_{x=y}\\
+    \\
+    f_{ab}\sim\textup{GP}(M_{ab},C_{ab})\\
+    f_{0}\sim\textup{GP}(M_{0},C_{0})\\
+    p_{ab}(x)=\textup{logit}^{-1}(f_{ab}(x)) \\
+    p_{0}(x)=\textup{logit}^{-1}(f_{0}(x))     
+\end{eqnarray*}
+The mean function for $f_0$ simply returns a constant, $m_0$. The mean of $f_{ab}$ takes presence in Africa as a covariate with coefficient $\beta_{\textup{africa}}$, and also a constant term $m_{ab}$. 
+
+Both fields use the Mat\`ern covariance function [cite Banerjee]. The range parameters of $f_0$ and $f_{ab}$ are $\theta_0$ and $\theta_{ab}$, respectively; the corresponding amplitude parameters are $\phi_0$ and $\phi_{ab}$; the degree-of-differentiability parameters are denoted $\nu_{0}$ and $\nu_{ab}$; and the nugget variances are $V_0$ and $V_{ab}$. The distance function $d$ gives the great-circle distance between its arguments.
+
+The Gaussian random fields are converted to probabilities using the standard inverse logit link function.
+
+\subsection{Likelihood} % (fold)
 \label{sec:likelihood}
 
 The a/b switch mutation happens with probability $P(b=1)=p_{ab}(x)$, which should be much higher for $x$ in Africa. Given that $b=1$, the silencing mutation in the promoter region happens with probability $p_0(x)$. Given that $b=0$, the silencing mutation happens with probability $p_1$, which is assumed to be a small, constant value. Hardy-Weinberg assumptions apply to the genotype frequencies.
@@ -55,6 +94,13 @@ The a/b switch mutation happens with probability $P(b=1)=p_{ab}(x)$, which shoul
         \item[promab]: The complement of pos0.
     \end{description}
 \end{description}
+
+The sampling distributions are assumed to be multinomial conditional on the appropriate individual phenotype or genotype probabilities described above. This likelihood completes the Bayesian probability model.
+
+\subsection{Implementation} 
+The model was implemented in the \href{www.python.org}{Python} programming language. The code is available from \href{github.com/malaria-atlas-project/ibd-world}{MAP's code repository}. It was fitted with the Markov chain Monte Carlo algorithm [cite Gilks] using the open-source Bayesian analysis package \href{code.google.com/p/pymc}{PyMC}. Dynamic traces [cite Gilks] are available upon request.
+
+Maps were generated using optimized Python code available from \href{github.com/malaria-atlas-project/generic-mbg}{MAP's code repository}.
 
 
 \end{document}

@@ -49,10 +49,11 @@ def ibd_covariance_submodel(suffix):
     scale_in_km = scale*6378.1
     
     # This parameter controls the degree of differentiability of the field.
-    diff_degree = pm.Uniform('diff_degree_%s'%suffix, .01, 1.5)
+    diff_degree = pm.Uniform('diff_degree_%s'%suffix, .01, 3)
     
-    # The nugget variance.
-    V = pm.Exponential('V_%s'%suffix, .1, value=1.)
+    # The nugget variance. Lower-bounded to preserve mixing.
+    V_shift = pm.Exponential('V_shift_%s'%suffix, .1, value=1.)
+    V = pm.Lambda('V', lambda V_shift=V_shift: V_shift+.1)
     
     # Create the covariance & its evaluation at the data locations.
     @pm.deterministic(trace=True)
