@@ -52,7 +52,7 @@ def ibd_covariance_submodel(suffix):
     diff_degree = pm.Uniform('diff_degree_%s'%suffix, .01, 3)
     
     # The nugget variance. Lower-bounded to preserve mixing.
-    V_shift = pm.Exponential('V_shift_%s'%suffix, .1, value=1.)
+    V_shift = pm.Exponential('V_shift_%s'%suffix, .1, value=.3, observed=True)
     V = pm.Lambda('V_%s'%suffix, lambda V_shift=V_shift: V_shift+.1)
     
     # Create the covariance & its evaluation at the data locations.
@@ -85,13 +85,18 @@ for i in xrange(4):
         else:
             g_freqs[hfk[i]*2] = lambda pb, p0, p1: hfv[i](pb,p0,p1)**2
 
-def make_model(lon,lat,covariate_values,n,datatype,genaa,genab,genbb,gen00,gena0,genb0,gena1,genb1,gen01,gen11,pheab,phea,pheb,phe0,prom0,promab,aphea,aphe0,bpheb,bphe0,cpus=1):
+def make_model(lon,lat,covariate_values,n,datatype,
+                genaa,genab,genbb,gen00,gena0,genb0,gena1,genb1,gen01,gen11,
+                pheab,phea,pheb,
+                phe0,prom0,promab,
+                aphea,aphe0,
+                bpheb,bphe0,
+                cpus=1):
     """
     This function is required by the generic MBG code.
     """
-    
     # Step method granularity    
-    grainsize = 10    
+    grainsize = 10
         
     # Non-unique data locations
     data_mesh = combine_spatial_inputs(lon, lat)
@@ -101,12 +106,12 @@ def make_model(lon,lat,covariate_values,n,datatype,genaa,genab,genbb,gen00,gena0
     fi = [0]
     ui = [0]
     for i in xrange(1,len(lon)):
-
+        
         # If repeat location, add observation
         loc = (lon[i], lat[i])
         if loc in locs:
             fi.append(locs.index(loc))
-
+            
         # Otherwise, new obs
         else:
             locs.append(loc)
@@ -115,10 +120,10 @@ def make_model(lon,lat,covariate_values,n,datatype,genaa,genab,genbb,gen00,gena0
     fi = np.array(fi)
     ti = [np.where(fi == i)[0] for i in xrange(max(fi)+1)]
     ui = np.asarray(ui)
-
+    
     lon = np.array(locs)[:,0]
     lat = np.array(locs)[:,1]
-
+    
     # Unique data locations
     logp_mesh = combine_spatial_inputs(lon,lat)
     
@@ -127,7 +132,7 @@ def make_model(lon,lat,covariate_values,n,datatype,genaa,genab,genbb,gen00,gena0
     init_OK = False
     
     # Probability of mutation in the promoter region, given that the other thing is a.
-    p1 = pm.Uniform('p1', 0, .04)
+    p1 = pm.Uniform('p1', 0, .04, value=.01, observed=True)
     
     while not init_OK:
         try:        
@@ -162,6 +167,9 @@ def make_model(lon,lat,covariate_values,n,datatype,genaa,genab,genbb,gen00,gena0
             eps_p_fb_d = []
             pb_d = []
         
+            tau_b = 1./sp_sub_b['V']
+            tau_0 = 1./sp_sub_0['V']            
+        
             for i in xrange(len(n)/grainsize+1):
                 sl = slice(i*grainsize,(i+1)*grainsize,None)
                 
@@ -169,8 +177,8 @@ def make_model(lon,lat,covariate_values,n,datatype,genaa,genab,genbb,gen00,gena0
                 this_f0 = pm.Lambda('f0_%i'%i, lambda f=f0, sl=sl, fi=fi: f[fi[sl]], trace=False)
 
                 # Nuggeted field in this cluster
-                eps_p_fb_d.append(pm.Normal('eps_p_fb_%i'%i, this_fb, 1./sp_sub_b['V'], value=0.*this_fb.value,trace=False))
-                eps_p_f0_d.append(pm.Normal('eps_p_f0_%i'%i, this_f0, 1./sp_sub_0['V'], value=0.*this_f0.value,trace=False))
+                eps_p_fb_d.append(pm.Normal('eps_p_fb_%i'%i, this_fb, tau_b, value=0.*this_fb.value,trace=False))
+                eps_p_f0_d.append(pm.Normal('eps_p_f0_%i'%i, this_f0, tau_0, value=0.*this_f0.value,trace=False))
                 
                 # The allele frequency
                 pb_d.append(pm.Lambda('pb_%i'%i,lambda lt=eps_p_fb_d[-1]: invlogit(lt),trace=False))
@@ -199,7 +207,7 @@ def make_model(lon,lat,covariate_values,n,datatype,genaa,genab,genbb,gen00,gena0
 
         sl_ind = int(i/grainsize)
         sub_ind = i%grainsize
-
+        
         # See duffy/doc/model.tex for explanations of the likelihoods.
         p0 = pm.Lambda('p0_%i_%i'%(sl_ind,sub_ind), lambda p=p0_d[sl_ind], j=sub_ind: p[j], trace=False)
         pb = pm.Lambda('pb_%i_%i'%(sl_ind,sub_ind), lambda p=pb_d[sl_ind], j=sub_ind: p[j], trace=False)
@@ -217,7 +225,7 @@ def make_model(lon,lat,covariate_values,n,datatype,genaa,genab,genbb,gen00,gena0
             # Need to have (a and not 1) on either chromosome, or not (not (a and not 1) on both chromosomes)
             p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1: 1-(1-(1-pb)*(1-p1))**2, trace=False)
             data_d.append(pm.Binomial('data_%i'%i, p=p, n=n, value=aphea[i], observed=True))
-
+            
         elif datatype[i]=='bphe':
             cur_obs = [bpheb[i], bphe0[i]]
             n = np.sum(cur_obs)
