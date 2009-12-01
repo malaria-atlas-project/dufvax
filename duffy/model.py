@@ -53,7 +53,7 @@ def ibd_covariance_submodel(suffix):
     
     # The nugget variance. Lower-bounded to preserve mixing.
     V_shift = pm.Exponential('V_shift_%s'%suffix, .1, value=1.)
-    V = pm.Lambda('V', lambda V_shift=V_shift: V_shift+.1)
+    V = pm.Lambda('V_%s'%suffix, lambda V_shift=V_shift: V_shift+.1)
     
     # Create the covariance & its evaluation at the data locations.
     @pm.deterministic(trace=True)
