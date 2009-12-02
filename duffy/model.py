@@ -91,7 +91,7 @@ def make_model(lon,lat,covariate_values,n,datatype,genaa,genab,genbb,gen00,gena0
     """
     
     # Step method granularity    
-    grainsize = 10    
+    grainsize = 2
         
     # Non-unique data locations
     data_mesh = combine_spatial_inputs(lon, lat)
