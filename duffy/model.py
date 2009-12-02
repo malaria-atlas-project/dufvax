@@ -173,16 +173,18 @@ def make_model(lon,lat,covariate_values,n,datatype,
             for i in xrange(len(n)/grainsize+1):
                 sl = slice(i*grainsize,(i+1)*grainsize,None)
                 
-                this_fb = pm.Lambda('fb_%i'%i, lambda f=fb, sl=sl, fi=fi: f[fi[sl]], trace=False)
-                this_f0 = pm.Lambda('f0_%i'%i, lambda f=f0, sl=sl, fi=fi: f[fi[sl]], trace=False)
-
-                # Nuggeted field in this cluster
-                eps_p_fb_d.append(pm.Normal('eps_p_fb_%i'%i, this_fb, tau_b, value=0.*this_fb.value,trace=False))
-                eps_p_f0_d.append(pm.Normal('eps_p_f0_%i'%i, this_f0, tau_0, value=0.*this_f0.value,trace=False))
+                if sl.stop>sl.start:
                 
-                # The allele frequency
-                pb_d.append(pm.Lambda('pb_%i'%i,lambda lt=eps_p_fb_d[-1]: invlogit(np.atleast_1d(lt)),trace=False))
-                p0_d.append(pm.Lambda('p0_%i'%i,lambda lt=eps_p_f0_d[-1]: invlogit(np.atleast_1d(lt)),trace=False))
+                    this_fb = pm.Lambda('fb_%i'%i, lambda f=fb, sl=sl, fi=fi: f[fi[sl]], trace=False)
+                    this_f0 = pm.Lambda('f0_%i'%i, lambda f=f0, sl=sl, fi=fi: f[fi[sl]], trace=False)
+
+                    # Nuggeted field in this cluster
+                    eps_p_fb_d.append(pm.Normal('eps_p_fb_%i'%i, this_fb, tau_b, value=0.*this_fb.value,trace=False))
+                    eps_p_f0_d.append(pm.Normal('eps_p_f0_%i'%i, this_f0, tau_0, value=0.*this_f0.value,trace=False))
+                
+                    # The allele frequency
+                    pb_d.append(pm.Lambda('pb_%i'%i,lambda lt=eps_p_fb_d[-1]: invlogit(np.atleast_1d(lt)),trace=False))
+                    p0_d.append(pm.Lambda('p0_%i'%i,lambda lt=eps_p_f0_d[-1]: invlogit(np.atleast_1d(lt)),trace=False))
         
             # The fields plus the nugget
             @pm.deterministic
