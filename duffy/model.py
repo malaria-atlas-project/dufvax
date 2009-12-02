@@ -173,8 +173,7 @@ def make_model(lon,lat,covariate_values,n,datatype,
             for i in xrange(len(n)/grainsize+1):
                 sl = slice(i*grainsize,(i+1)*grainsize,None)
                 
-                if sl.stop<len(n):
-                
+                if sl.stop<len(n)+1:
                     this_fb = pm.Lambda('fb_%i'%i, lambda f=fb, sl=sl, fi=fi: f[fi[sl]], trace=False)
                     this_f0 = pm.Lambda('f0_%i'%i, lambda f=f0, sl=sl, fi=fi: f[fi[sl]], trace=False)
 
