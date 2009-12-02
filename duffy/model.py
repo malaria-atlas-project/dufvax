@@ -181,8 +181,8 @@ def make_model(lon,lat,covariate_values,n,datatype,
                 eps_p_f0_d.append(pm.Normal('eps_p_f0_%i'%i, this_f0, tau_0, value=0.*this_f0.value,trace=False))
                 
                 # The allele frequency
-                pb_d.append(pm.Lambda('pb_%i'%i,lambda lt=eps_p_fb_d[-1]: invlogit(lt),trace=False))
-                p0_d.append(pm.Lambda('p0_%i'%i,lambda lt=eps_p_f0_d[-1]: invlogit(lt),trace=False))
+                pb_d.append(pm.Lambda('pb_%i'%i,lambda lt=eps_p_fb_d[-1]: invlogit(np.atleast_1d(lt)),trace=False))
+                p0_d.append(pm.Lambda('p0_%i'%i,lambda lt=eps_p_f0_d[-1]: invlogit(np.atleast_1d(lt)),trace=False))
         
             # The fields plus the nugget
             @pm.deterministic
