@@ -1,6 +1,6 @@
 # Author: Anand Patil
 # Date: 6 Feb 2009
-# License: Creative Commons BY-NC-SA
+# License: GPL
 ####################################
 
 from setuptools import setup

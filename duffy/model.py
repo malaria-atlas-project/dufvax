@@ -52,7 +52,7 @@ def ibd_covariance_submodel(suffix):
     diff_degree = pm.Uniform('diff_degree_%s'%suffix, .01, 3)
     
     # The nugget variance. Lower-bounded to preserve mixing.
-    V_shift = pm.Exponential('V_shift_%s'%suffix, .1, value=.3, observed=True)
+    V_shift = pm.Exponential('V_shift_%s'%suffix, .1, value=.3)
     V = pm.Lambda('V_%s'%suffix, lambda V_shift=V_shift: V_shift+.1)
     
     # Create the covariance & its evaluation at the data locations.
