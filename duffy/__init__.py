@@ -5,6 +5,7 @@ from cut_geographic import cut_geographic, hemisphere
 import duffy
 from postproc_utils import duffy_postproc
 import pymc as pm
+import numpy as np
 import os
 root = os.path.split(duffy.__file__)[0]
 pm.gp.cov_funs.cov_utils.mod_search_path.append(root)
