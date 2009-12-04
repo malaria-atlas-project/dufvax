@@ -18,7 +18,6 @@ from pylab import csv2rec, rec2csv
 import numpy as np
 
 duffy_datafile, vivax_datafile = sys.argv[1:]
-
 combined_datafile = duffy_datafile.split('.')[0]+'_+_'+vivax_datafile.split('.')[0]+'.csv'
 
 duffy_data = csv2rec(duffy_datafile)
@@ -39,7 +38,6 @@ duffycols = ['genaa','genab','genbb','gen00','gena0','genb0','gena1','genb1','ge
             'bphe0']
 
 coldict = {}
-
 coldict['t'] = np.concatenate((duffy_nan,(tstart+tend)/2.))
 coldict['lon'] = np.concatenate((duffy_data.lon, vivax_data.lon))
 coldict['lat'] = np.concatenate((duffy_data.lat, vivax_data.lat))
@@ -57,18 +55,38 @@ for colname in duffycols:
 allcols = coldict.keys()
 combined_data = np.rec.fromarrays([coldict[col] for col in allcols], names=allcols)
 
+
 # Checks
-def testcol(col, predicate):
-    where_fail = np.where(predicate(combined_data['col']))
+def testcol(predicate, col):
+    where_fail = np.where(predicate(combined_data[col]))
     if len(where_fail[0])>0:
-        raise ValueError, 'Test %s fails. Test documentation: \n\n%s. Failure at rows %s'%(predicate.__name__, predicate.__doc__, where_fail[0]+1)
+        raise ValueError, 'Test %s fails. %s \nFailure at rows %s'%(predicate.__name__, predicate.__doc__, where_fail[0]+1)
         
 def loncheck(lon):
     """Makes sure longitudes are between -180 and 180."""
-    return np.abs(lon)>180.
+    return np.abs(lon)>180. + np.isnan(lon)
+testcol(loncheck,'lon')
     
 def latcheck(lat):
     """Makes sure latitudes are between -90 and 90."""
-    return np.abs(lat)>180.
+    return np.abs(lat)>180. + np.isnan(lat)
+testcol(latcheck,'lat')
 
+def duffytimecheck(t):
+    """Makes sure times are between 1985 and 2010"""
+    return True-((t[n_vivax:]>=1985) + (t[n_vivax:]<=2010))
+testcol(duffytimecheck,'t')
+    
+def dtypecheck(datatype):
+    """Makes sure all datatypes are recognized."""
+    return True-((datatype=='gen')+(datatype=='prom')+(datatype=='aphe')+(datatype=='bphe')+(datatype=='phe')+(datatype=='vivax'))
+testcol(dtypecheck,'datatype')
+
+def ncheck(n):
+    """Makes sure n>0 and not nan"""
+    return (n==0)+np.isnan(n)
+testcol(ncheck,'n')
+
+
+# Write out
 rec2csv(combined_data, combined_datafile)
