@@ -57,4 +57,18 @@ for colname in duffycols:
 allcols = coldict.keys()
 combined_data = np.rec.fromarrays([coldict[col] for col in allcols], names=allcols)
 
+# Checks
+def testcol(col, predicate):
+    where_fail = np.where(predicate(combined_data['col']))
+    if len(where_fail[0])>0:
+        raise ValueError, 'Test %s fails. Test documentation: \n\n%s. Failure at rows %s'%(predicate.__name__, predicate.__doc__, where_fail[0]+1)
+        
+def loncheck(lon):
+    """Makes sure longitudes are between -180 and 180."""
+    return np.abs(lon)>180.
+    
+def latcheck(lat):
+    """Makes sure latitudes are between -90 and 90."""
+    return np.abs(lat)>180.
+
 rec2csv(combined_data, combined_datafile)
