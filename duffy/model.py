@@ -132,7 +132,7 @@ def make_model(lon,lat,covariate_values,n,datatype,
     init_OK = False
     
     # Probability of mutation in the promoter region, given that the other thing is a.
-    p1 = pm.Uniform('p1', 0, .04, value=.01, observed=True)
+    p1 = pm.Uniform('p1', 0, .04, value=.01)
     
     while not init_OK:
         try:        
