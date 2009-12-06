@@ -47,6 +47,8 @@ def mcmc_init(M):
     M.use_step_method(FieldStepper, M.f0, M.V_0, M.C_eval_0, M.M_eval_0, M.logp_mesh, M.eps_p_f0, M.ti)
     for tup in zip(M.eps_p_fb_d, M.eps_p_f0_d):
         M.use_step_method(pm.AdaptiveMetropolis, tup)
+        for v in tup:
+            M.use_step_method(pm.Metropolis, v)
     scalar_stochastics = []
     for v in M.stochastics:
         if v not in M.eps_p_fb_d and v not in M.eps_p_f0_d and np.squeeze(v.value).shape == ():
