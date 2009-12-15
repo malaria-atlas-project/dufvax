@@ -49,11 +49,17 @@ def ibd_covariance_submodel(suffix):
     scale_in_km = scale*6378.1
     
     # This parameter controls the degree of differentiability of the field.
-    diff_degree = pm.Uniform('diff_degree_%s'%suffix, .01, 3)
+    diff_degree = pm.Uniform('diff_degree_%s'%suffix, .5, 3)
     
     # The nugget variance. Lower-bounded to preserve mixing.
-    V_shift = pm.Exponential('V_shift_%s'%suffix, .1, value=.3)
-    V = pm.Lambda('V_%s'%suffix, lambda V_shift=V_shift: V_shift+.1)
+    V = pm.Exponential('V_%s'%suffix, .1, value=1.)
+    @pm.potential
+    def V_bound(V=V):
+        if V<.1:
+            return -np.inf
+        else:
+            return 0
+    
     
     # Create the covariance & its evaluation at the data locations.
     @pm.deterministic(trace=True)
@@ -71,8 +77,8 @@ h_freqs = {'a': lambda pb, p0, p1: (1-pb)*(1-p1),
             'b': lambda pb, p0, p1: pb*(1-p0),
             '0': lambda pb, p0, p1: pb*p0,
             '1': lambda pb, p0, p1: (1-pb)*p1}
-hfk = h_freqs.keys()
-hfv = h_freqs.values()
+hfk = ['a','b','0','1']
+hfv = [h_freqs[key] for key in hfk]
 
 # ========================
 # = Genotype frequencies =
@@ -81,10 +87,14 @@ g_freqs = {}
 for i in xrange(4):
     for j in xrange(i,4):
         if i != j:
-            g_freqs[hfk[i]+hfk[j]] = g_freqs[hfk[j]+hfk[i]] = lambda pb, p0, p1: 2 * hfv[i](pb,p0,p1) * hfv[j](pb,p0,p1)
+            g_freqs[hfk[i]+hfk[j]] = lambda pb, p0, p1, i=i, j=j: 2 * np.asscalar(hfv[i](pb,p0,p1) * hfv[j](pb,p0,p1))
         else:
-            g_freqs[hfk[i]*2] = lambda pb, p0, p1: hfv[i](pb,p0,p1)**2
-
+            g_freqs[hfk[i]*2] = lambda pb, p0, p1, i=i: np.asscalar(hfv[i](pb,p0,p1))**2
+            
+for i in xrange(1000):
+    pb,p0,p1 = np.random.random(size=3)
+    np.testing.assert_almost_equal(np.sum([gfi(pb,p0,p1) for gfi in g_freqs.values()]),1.)
+    
 def make_model(lon,lat,covariate_values,n,datatype,
                 genaa,genab,genbb,gen00,gena0,genb0,gena1,genb1,gen01,gen11,
                 pheab,phea,pheb,
@@ -178,8 +188,8 @@ def make_model(lon,lat,covariate_values,n,datatype,
                     this_f0 = pm.Lambda('f0_%i'%i, lambda f=f0, sl=sl, fi=fi: f[fi[sl]], trace=False)
 
                     # Nuggeted field in this cluster
-                    eps_p_fb_d.append(pm.Normal('eps_p_fb_%i'%i, this_fb, tau_b, value=0.*this_fb.value,trace=False))
-                    eps_p_f0_d.append(pm.Normal('eps_p_f0_%i'%i, this_f0, tau_0, value=0.*this_f0.value,trace=False))
+                    eps_p_fb_d.append(pm.Normal('eps_p_fb_%i'%i, this_fb, tau_b, value=np.random.normal(), trace=False))
+                    eps_p_f0_d.append(pm.Normal('eps_p_f0_%i'%i, this_f0, tau_0, value=np.random.normal(), trace=False))
                 
                     # The allele frequency
                     pb_d.append(pm.Lambda('pb_%i'%i,lambda lt=eps_p_fb_d[-1]: invlogit(np.atleast_1d(lt)),trace=False))
@@ -242,19 +252,19 @@ def make_model(lon,lat,covariate_values,n,datatype,
                 g_freqs['a0'](pb,p0,p1)+g_freqs['a1'](pb,p0,p1)+g_freqs['aa'](pb,p0,p1),
                 g_freqs['b0'](pb,p0,p1)+g_freqs['b1'](pb,p0,p1)+g_freqs['bb'](pb,p0,p1),
                 g_freqs['00'](pb,p0,p1)+g_freqs['01'](pb,p0,p1)+g_freqs['11'](pb,p0,p1)]), trace=False)
+            np.testing.assert_almost_equal(p.value.sum(), 1)
             data_d.append(pm.Multinomial('data_%i'%i, p=p, n=n, value=cur_obs, observed=True))
             
         elif datatype[i]=='gen':
             cur_obs = np.array([genaa[i],genab[i],gena0[i],gena1[i],genbb[i],genb0[i],genb1[i],gen00[i],gen01[i],gen11[i]])
             n = np.sum(cur_obs)
-            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1, g_freqs=g_freqs: np.array([g_freqs[key](pb,p0,p1)\
-                                    for key in ['aa','ab','a0','a1','bb','b0','b1','00','01','11']]), trace=False)
+            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1, g_freqs=g_freqs: \
+                np.array([g_freqs[key](pb,p0,p1) for key in ['aa','ab','a0','a1','bb','b0','b1','00','01','11']]), trace=False)
+            np.testing.assert_almost_equal(p.value.sum(), 1)
             data_d.append(pm.Multinomial('data_%i'%i, p=p, n=n, value=cur_obs, observed=True))
             
         if np.any(np.isnan(cur_obs)):
             raise ValueError
-        if datatype[i] in ['phe','gen']:
-            np.testing.assert_almost_equal(p.value.sum(), 1)
     
     covariate_dicts = {'eps_p_fb': covariate_dict_b, 'eps_p_f0': covariate_dict_0}
             
