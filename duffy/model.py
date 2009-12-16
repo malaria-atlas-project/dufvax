@@ -63,7 +63,7 @@ def ibd_covariance_submodel(suffix, mesh, covariate_values):
     # Create the covariance & its evaluation at the data locations.
     @pm.deterministic(trace=True,name='C_%s'%suffix)
     def C(amp=amp, scale=scale, diff_degree=diff_degree):
-        eval_fun = add_covariates(pm.gp.matern.geo_rad, covariate_values)
+        eval_fun = CovarianceWithCovariates(pm.gp.matern.geo_rad, mesh, covariate_values, diag_safe=True)
         return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, diff_degree=diff_degree)
     
     # Create the mean function    
