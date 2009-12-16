@@ -29,7 +29,7 @@ import generic_mbg
 
 __all__ = ['make_model']
 
-def ibd_covariance_submodel(suffix):
+def ibd_covariance_submodel(suffix, mesh, covariate_values):
     """
     A small function that creates the mean and covariance object
     of the random field.
@@ -60,13 +60,21 @@ def ibd_covariance_submodel(suffix):
         else:
             return 0
     
-    
     # Create the covariance & its evaluation at the data locations.
-    @pm.deterministic(trace=True)
+    @pm.deterministic(trace=True,name='C_%s'%suffix)
     def C(amp=amp, scale=scale, diff_degree=diff_degree):
-        """A covariance function created from the current parameter values."""
-        return pm.gp.FullRankCovariance(pm.gp.matern.geo_rad, amp=amp, scale=scale, diff_degree=diff_degree)
-    C.__name__ = 'C_%s'%suffix
+        eval_fun = add_covariates(pm.gp.matern.geo_rad, covariate_values)
+        return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, diff_degree=diff_degree)
+    
+    # Create the mean function    
+    @pm.determininstic(trace=True, name='M_%s'%name)
+    def M():
+        return pm.gp.Mean(pm.gp.zero_mean())
+    
+    # Create the GP submodel    
+    sp_sub = pm.gp.GPSubmodel('sp_sub_%s'%suffix,M,C,mesh)
+
+    sp_sub.f_eval.value = sp_sub.f_eval.value - sp_sub.f_eval.value.mean()    
     
     return locals()
         
@@ -109,67 +117,14 @@ def make_model(lon,lat,covariate_values,n,datatype,
     grainsize = 1
         
     # Non-unique data locations
-    data_mesh = combine_spatial_inputs(lon, lat)
-    
-    # Uniquify the data locations.
-    locs = [(lon[0], lat[0])]
-    fi = [0]
-    ui = [0]
-    for i in xrange(1,len(lon)):
-        
-        # If repeat location, add observation
-        loc = (lon[i], lat[i])
-        if loc in locs:
-            fi.append(locs.index(loc))
-            
-        # Otherwise, new obs
-        else:
-            locs.append(loc)
-            fi.append(max(fi)+1)
-            ui.append(i)
-    fi = np.array(fi)
-    ti = [np.where(fi == i)[0] for i in xrange(max(fi)+1)]
-    ui = np.asarray(ui)
-    
-    lon = np.array(locs)[:,0]
-    lat = np.array(locs)[:,1]
-    
-    # Unique data locations
-    logp_mesh = combine_spatial_inputs(lon,lat)
-    
-    # Create the mean & its evaluation at the data locations.
-    print data_mesh.shape
+    logp_mesh = combine_spatial_inputs(lon, lat)
     init_OK = False
     
     # Probability of mutation in the promoter region, given that the other thing is a.
     p1 = pm.Uniform('p1', 0, .04, value=.01)
     
     while not init_OK:
-        try:        
-            
-            # Mean functions of the random fields controlling a/b switch and promoter given b frequencies.
-            M_b, M_eval_b = trivial_means(logp_mesh)
-            M_b.__name__ = 'M_b'
-            M_eval_b.__name__ = 'M_eval_b'
-            M_0, M_eval_0 = trivial_means(logp_mesh)
-            M_0.__name__ = 'M_0'
-            M_eval_0.__name__ = 'M_eval_0'
-            
-            # Covariance functions.
-            sp_sub_b = ibd_covariance_submodel('b')    
-            sp_sub_0 = ibd_covariance_submodel('0')
-            covariate_dict_b, C_eval_b = cd_and_C_eval(covariate_values, sp_sub_b['C'], data_mesh, ui)
-            C_eval_b.__name__ = 'C_eval_b'
-            covariate_dict_0, C_eval_0 = cd_and_C_eval({}, sp_sub_0['C'], data_mesh, ui)
-            C_eval_0.__name__ = 'C_eval_0'
-        
-            # The fields evaluated at the uniquified data locations            
-            fb = pm.MvNormalCov('fb', M_eval_b, C_eval_b)
-            f0 = pm.MvNormalCov('f0', M_eval_0, C_eval_0)
-
-            # Make the fs start somewhere a bit sane
-            fb.value = fb.value - np.mean(fb.value)
-            f0.value = f0.value - np.mean(f0.value)            
+        try:      
             
             # Loop over data clusters, adding nugget and applying link function.
             eps_p_f0_d = []
@@ -184,8 +139,8 @@ def make_model(lon,lat,covariate_values,n,datatype,
                 sl = slice(i*grainsize,(i+1)*grainsize,None)
                 
                 if sl.stop<len(n)+1:
-                    this_fb = pm.Lambda('fb_%i'%i, lambda f=fb, sl=sl, fi=fi: f[fi[sl]], trace=False)
-                    this_f0 = pm.Lambda('f0_%i'%i, lambda f=f0, sl=sl, fi=fi: f[fi[sl]], trace=False)
+                    this_fb = pm.Lambda('fb_%i'%i, lambda f=sp_sub_b.f_eval, sl=sl, fi=fi: f[sl], trace=False)
+                    this_f0 = pm.Lambda('f0_%i'%i, lambda f=sp_sub_0.f_eval, sl=sl, fi=fi: f[sl], trace=False)
 
                     # Nuggeted field in this cluster
                     eps_p_fb_d.append(pm.Normal('eps_p_fb_%i'%i, this_fb, tau_b, value=np.random.normal(), trace=False))
@@ -265,14 +220,5 @@ def make_model(lon,lat,covariate_values,n,datatype,
             
         if np.any(np.isnan(cur_obs)):
             raise ValueError
-    
-    covariate_dicts = {'eps_p_fb': covariate_dict_b, 'eps_p_f0': covariate_dict_0}
-            
-    out = locals()
-    # out.pop('sp_sub_b')
-    # out.pop('sp_sub_0')
-    for d in sp_sub_b.values() + sp_sub_0.values():
-        if isinstance(d,pm.Variable):
-            out[d.__name__] = d
 
-    return out
+    return locals()

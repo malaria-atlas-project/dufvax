@@ -1,6 +1,6 @@
 # from mcmc import *
 from model import *
-from generic_mbg import FieldStepper, thread_partition_array
+from generic_mbg import thread_partition_array
 from cut_geographic import cut_geographic, hemisphere
 import duffy
 from postproc_utils import duffy_postproc
@@ -10,22 +10,16 @@ import os
 root = os.path.split(duffy.__file__)[0]
 pm.gp.cov_funs.cov_utils.mod_search_path.append(root)
 
-# Stuff mandated by the new map_utils standard
 cut_matern = pm.gp.cov_utils.covariance_wrapper('matern', 'pymc.gp.cov_funs.isotropic_cov_funs', {'diff_degree': 'The degree of differentiability of realizations.'}, 'cut_geographic', 'cg')
  
-f_labels = ['eps_p_fb', 'eps_p_f0']
-fs_have_nugget = {'eps_p_fb': True, 'eps_p_f0': True}
-nugget_labels = {'eps_p_fb': 'V_b', 'eps_p_f0': 'V_0'}
-M_labels = {'eps_p_fb': 'M_b', 'eps_p_f0': 'M_0'}
-C_labels = {'eps_p_fb': 'C_b', 'eps_p_f0': 'C_0'}
-x_labels = {'eps_p_fb': 'data_mesh', 'eps_p_f0': 'data_mesh'}
-diags_safe = {'eps_p_fb': True, 'eps_p_f0': True}
+nugget_labels = {'sp_sub_b': 'V_b', 'sp_sub_0': 'V_0'}
+obs_labels = {'sp_sub_b':'eps_p_fb','sp_sub_0':'eps_p_f0'}
+diags_safe = {'sp_sub_b': True, 'sp_sub_0': True}
 
 def map_postproc(eps_p_fb, eps_p_f0, p1):
     """
     Returns probability of Duffy negativity from two random fields giving mutation frequencies.
     Fast and threaded.
-    TODO: Fortran-sticate this.
     """
     
     cmin, cmax = thread_partition_array(eps_p_fb)        
@@ -40,21 +34,18 @@ def validate_postproc(**non_cov_columns):
     """
     raise NotImplementedError
     
-metadata_keys = ['fi','ti','ui']
+metadata_keys = []
 
 def mcmc_init(M):
-    M.use_step_method(FieldStepper, M.fb, M.V_b, M.C_eval_b, M.M_eval_b, M.logp_mesh, M.eps_p_fb, M.ti)
-    M.use_step_method(FieldStepper, M.f0, M.V_0, M.C_eval_0, M.M_eval_0, M.logp_mesh, M.eps_p_f0, M.ti)
+    M.use_step_method(pm.gp.GPEvaluationGibbs, M.sp_sub_b.f, M.V_b, M.eps_p_fb)
+    M.use_step_method(pm.gp.GPEvaluationGibbs, M.sp_sub_0.f, M.V_0, M.eps_p_f0)
     for tup in zip(M.eps_p_fb_d, M.eps_p_f0_d):
         M.use_step_method(pm.AdaptiveMetropolis, tup)
-        # for v in tup:
-        #     M.use_step_method(pm.Metropolis, v)
     scalar_stochastics = []
     for v in M.stochastics:
         if v not in M.eps_p_fb_d and v not in M.eps_p_f0_d and np.squeeze(v.value).shape == ():
             scalar_stochastics.append(v)
     M.use_step_method(pm.AdaptiveMetropolis, scalar_stochastics)
-            
 
 non_cov_columns = { 'n': 'int',
                     'datatype': 'str',
