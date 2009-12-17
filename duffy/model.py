@@ -106,7 +106,7 @@ def make_model(lon,lat,covariate_values,n,datatype,
     This function is required by the generic MBG code.
     """
     # Step method granularity    
-    grainsize = 1
+    grainsize = 5
         
     # Non-unique data locations
     data_mesh = combine_spatial_inputs(lon, lat)
