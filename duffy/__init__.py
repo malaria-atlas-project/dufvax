@@ -14,6 +14,9 @@ cut_matern = pm.gp.cov_utils.covariance_wrapper('matern', 'pymc.gp.cov_funs.isot
 nugget_labels = {'sp_sub_b': 'V_b', 'sp_sub_0': 'V_0'}
 obs_labels = {'sp_sub_b':'eps_p_fb','sp_sub_0':'eps_p_f0'}
 
+def check_data(ra):
+    pass
+
 def map_postproc(sp_sub_b, sp_sub_f0, p1):
     """
     Returns probability of Duffy negativity from two random fields giving mutation frequencies.
