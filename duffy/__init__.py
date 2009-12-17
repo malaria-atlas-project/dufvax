@@ -40,11 +40,14 @@ def mcmc_init(M):
     M.use_step_method(pm.gp.GPEvaluationGibbs, M.sp_sub_0.f, M.V_0, M.eps_p_f0)
     for tup in zip(M.eps_p_fb_d, M.eps_p_f0_d):
         M.use_step_method(pm.AdaptiveMetropolis, tup)
-    scalar_stochastics = []
-    for v in M.stochastics:
-        if v not in M.eps_p_fb_d and v not in M.eps_p_f0_d and np.squeeze(v.value).shape == ():
-            scalar_stochastics.append(v)
-    M.use_step_method(pm.AdaptiveMetropolis, scalar_stochastics)
+        # for v in tup:
+        #     M.use_step_method(pm.Metropolis, v)
+    # scalar_stochastics = []
+    # for v in M.stochastics:
+    #     if v not in M.eps_p_fb_d and v not in M.eps_p_f0_d and np.squeeze(v.value).shape == ():
+    #         scalar_stochastics.append(v)
+    # M.use_step_method(pm.AdaptiveMetropolis, scalar_stochastics)
+
 
 non_cov_columns = { 'n': 'int',
                     'datatype': 'str',

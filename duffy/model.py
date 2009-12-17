@@ -114,7 +114,7 @@ def make_model(lon,lat,covariate_values,n,datatype,
     This function is required by the generic MBG code.
     """
     # Step method granularity    
-    grainsize = 1
+    grainsize = 5
         
     # Non-unique data locations
     logp_mesh = combine_spatial_inputs(lon, lat)
@@ -135,16 +135,16 @@ def make_model(lon,lat,covariate_values,n,datatype,
             tau_b = 1./sp_sub_b['V']
             tau_0 = 1./sp_sub_0['V']            
         
-            for i in xrange(len(n)/grainsize+1):
+            for i in xrange(np.ceil(len(n)/float(grainsize))):
                 sl = slice(i*grainsize,(i+1)*grainsize,None)
                 
-                if sl.stop<len(n)+1:
-                    this_fb = pm.Lambda('fb_%i'%i, lambda f=sp_sub_b.f_eval, sl=sl, fi=fi: f[sl], trace=False)
-                    this_f0 = pm.Lambda('f0_%i'%i, lambda f=sp_sub_0.f_eval, sl=sl, fi=fi: f[sl], trace=False)
+                if sl.stop>sl.start:
+                    this_fb = pm.Lambda('fb_%i'%i, lambda f=fb, sl=sl, fi=fi: f[fi[sl]], trace=False)
+                    this_f0 = pm.Lambda('f0_%i'%i, lambda f=f0, sl=sl, fi=fi: f[fi[sl]], trace=False)
 
                     # Nuggeted field in this cluster
-                    eps_p_fb_d.append(pm.Normal('eps_p_fb_%i'%i, this_fb, tau_b, value=np.random.normal(), trace=False))
-                    eps_p_f0_d.append(pm.Normal('eps_p_f0_%i'%i, this_f0, tau_0, value=np.random.normal(), trace=False))
+                    eps_p_fb_d.append(pm.Normal('eps_p_fb_%i'%i, this_fb, tau_b, value=np.random.normal(size=np.shape(this_fb.value)), trace=False))
+                    eps_p_f0_d.append(pm.Normal('eps_p_f0_%i'%i, this_f0, tau_0, value=np.random.normal(size=np.shape(this_fb.value)), trace=False))
                 
                     # The allele frequency
                     pb_d.append(pm.Lambda('pb_%i'%i,lambda lt=eps_p_fb_d[-1]: invlogit(np.atleast_1d(lt)),trace=False))
@@ -173,6 +173,9 @@ def make_model(lon,lat,covariate_values,n,datatype,
 
         sl_ind = int(i/grainsize)
         sub_ind = i%grainsize
+        
+        if sl_ind == len(p0_d):
+            break
         
         # See duffy/doc/model.tex for explanations of the likelihoods.
         p0 = pm.Lambda('p0_%i_%i'%(sl_ind,sub_ind), lambda p=p0_d[sl_ind], j=sub_ind: p[j], trace=False)
