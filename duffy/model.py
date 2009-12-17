@@ -137,9 +137,8 @@ def make_model(lon,lat,covariate_values,n,datatype,
             p0_d = []
             eps_p_fb_d = []
             pb_d = []
-        
-            tau_b = 1./spatial_b_vars['V']
-            tau_0 = 1./spatial_0_vars['V']            
+            V_b = spatial_b_vars['V']
+            V_0 = spatial_0_vars['V']            
         
             for i in xrange(np.ceil(len(n)/float(grainsize))):
                 sl = slice(i*grainsize,(i+1)*grainsize,None)
@@ -149,8 +148,8 @@ def make_model(lon,lat,covariate_values,n,datatype,
                     this_f0 = pm.Lambda('f0_%i'%i, lambda f=sp_sub_0.f_eval, sl=sl: f[sl], trace=False)
 
                     # Nuggeted field in this cluster
-                    eps_p_fb_d.append(pm.Normal('eps_p_fb_%i'%i, this_fb, tau_b, value=np.random.normal(size=np.shape(this_fb.value)), trace=False))
-                    eps_p_f0_d.append(pm.Normal('eps_p_f0_%i'%i, this_f0, tau_0, value=np.random.normal(size=np.shape(this_fb.value)), trace=False))
+                    eps_p_fb_d.append(pm.Normal('eps_p_fb_%i'%i, this_fb, 1./V_b, value=np.random.normal(size=np.shape(this_fb.value)), trace=False))
+                    eps_p_f0_d.append(pm.Normal('eps_p_f0_%i'%i, this_f0, 1./V_0, value=np.random.normal(size=np.shape(this_fb.value)), trace=False))
                 
                     # The allele frequency
                     pb_d.append(pm.Lambda('pb_%i'%i,lambda lt=eps_p_fb_d[-1]: invlogit(np.atleast_1d(lt)),trace=False))

@@ -35,8 +35,8 @@ def validate_postproc(**non_cov_columns):
 metadata_keys = []
 
 def mcmc_init(M):
-    M.use_step_method(pm.gp.GPEvaluationGibbs, M.sp_sub_b.f, M.V_b, M.eps_p_fb)
-    M.use_step_method(pm.gp.GPEvaluationGibbs, M.sp_sub_0.f, M.V_0, M.eps_p_f0)
+    M.use_step_method(pm.gp.GPEvaluationGibbs, M.sp_sub_b, M.V_b, M.eps_p_fb)
+    M.use_step_method(pm.gp.GPEvaluationGibbs, M.sp_sub_0, M.V_0, M.eps_p_f0)
     for tup in zip(M.eps_p_fb_d, M.eps_p_f0_d):
         M.use_step_method(pm.AdaptiveMetropolis, tup)
         # for v in tup:
