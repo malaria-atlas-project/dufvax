@@ -67,9 +67,9 @@ def ibd_covariance_submodel(suffix, mesh, covariate_values):
         return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, diff_degree=diff_degree)
     
     # Create the mean function    
-    @pm.determininstic(trace=True, name='M_%s'%name)
+    @pm.deterministic(trace=True, name='M_%s'%suffix)
     def M():
-        return pm.gp.Mean(pm.gp.zero_mean())
+        return pm.gp.Mean(pm.gp.zero_fn)
     
     # Create the GP submodel    
     sp_sub = pm.gp.GPSubmodel('sp_sub_%s'%suffix,M,C,mesh)
@@ -126,21 +126,27 @@ def make_model(lon,lat,covariate_values,n,datatype,
     while not init_OK:
         try:      
             
+            # Spatial submodels
+            spatial_b_vars = ibd_covariance_submodel('b',logp_mesh,covariate_values)
+            spatial_0_vars = ibd_covariance_submodel('0',logp_mesh,{})
+            sp_sub_b = spatial_b_vars['sp_sub']
+            sp_sub_0 = spatial_0_vars['sp_sub']
+            
             # Loop over data clusters, adding nugget and applying link function.
             eps_p_f0_d = []
             p0_d = []
             eps_p_fb_d = []
             pb_d = []
         
-            tau_b = 1./sp_sub_b['V']
-            tau_0 = 1./sp_sub_0['V']            
+            tau_b = 1./spatial_b_vars['V']
+            tau_0 = 1./spatial_0_vars['V']            
         
             for i in xrange(np.ceil(len(n)/float(grainsize))):
                 sl = slice(i*grainsize,(i+1)*grainsize,None)
                 
                 if sl.stop>sl.start:
-                    this_fb = pm.Lambda('fb_%i'%i, lambda f=fb, sl=sl, fi=fi: f[fi[sl]], trace=False)
-                    this_f0 = pm.Lambda('f0_%i'%i, lambda f=f0, sl=sl, fi=fi: f[fi[sl]], trace=False)
+                    this_fb = pm.Lambda('fb_%i'%i, lambda f=sp_sub_b.f_eval, sl=sl: f[sl], trace=False)
+                    this_f0 = pm.Lambda('f0_%i'%i, lambda f=sp_sub_0.f_eval, sl=sl: f[sl], trace=False)
 
                     # Nuggeted field in this cluster
                     eps_p_fb_d.append(pm.Normal('eps_p_fb_%i'%i, this_fb, tau_b, value=np.random.normal(size=np.shape(this_fb.value)), trace=False))

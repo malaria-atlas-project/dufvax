@@ -1,6 +1,5 @@
 # from mcmc import *
 from model import *
-from generic_mbg import thread_partition_array
 from cut_geographic import cut_geographic, hemisphere
 import duffy
 from postproc_utils import duffy_postproc
@@ -21,7 +20,7 @@ def map_postproc(sp_sub_b, sp_sub_f0, p1):
     Fast and threaded.
     """
     
-    cmin, cmax = thread_partition_array(eps_p_fb)        
+    cmin, cmax = pm.thread_partition_array(eps_p_fb)        
     
     pm.map_noreturn(duffy_postproc, [(eps_p_fb, eps_p_f0, p1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
     
