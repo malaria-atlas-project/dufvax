@@ -180,7 +180,7 @@ def make_model(lon,lat,covariate_values,n,datatype,
             tau_b = 1./sp_sub_b['V']
             tau_0 = 1./sp_sub_0['V']            
         
-            for i in xrange(len(n)/grainsize+1):
+            for i in xrange(np.ceil(len(n)/float(grainsize))):
                 sl = slice(i*grainsize,(i+1)*grainsize,None)
                 
                 if sl.stop>sl.start:
