@@ -17,15 +17,15 @@ obs_labels = {'sp_sub_b':'eps_p_fb','sp_sub_0':'eps_p_f0'}
 def check_data(ra):
     pass
 
-def map_postproc(sp_sub_b, sp_sub_f0, p1):
+def map_postproc(sp_sub_b, sp_sub_0, p1):
     """
     Returns probability of Duffy negativity from two random fields giving mutation frequencies.
     Fast and threaded.
     """
     
-    cmin, cmax = pm.thread_partition_array(eps_p_fb)        
+    cmin, cmax = pm.thread_partition_array(sp_sub_b)        
     
-    pm.map_noreturn(duffy_postproc, [(eps_p_fb, eps_p_f0, p1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
+    pm.map_noreturn(duffy_postproc, [(sp_sub_b, sp_sub_0, p1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
     
     return eps_p_fb
 
