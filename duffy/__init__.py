@@ -27,7 +27,7 @@ def map_postproc(sp_sub_b, sp_sub_0, p1):
     
     pm.map_noreturn(duffy_postproc, [(sp_sub_b, sp_sub_0, p1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
     
-    return eps_p_fb
+    return sp_sub_b
 
 def validate_postproc(**non_cov_columns):
     """
