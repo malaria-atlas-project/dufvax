@@ -2,7 +2,7 @@
 from model import *
 from cut_geographic import cut_geographic, hemisphere
 import duffy
-from postproc_utils import duffy_postproc
+from postproc_utils import *
 import pymc as pm
 import numpy as np
 import os
@@ -17,17 +17,31 @@ obs_labels = {'sp_sub_b':'eps_p_fb','sp_sub_0':'eps_p_f0'}
 def check_data(ra):
     pass
 
-def map_postproc(sp_sub_b, sp_sub_0, p1):
-    """
-    Returns probability of Duffy negativity from two random fields giving mutation frequencies.
-    Fast and threaded.
-    """
+def phe0(eps_p_fb, eps_p_f0, p1):
+    cmin, cmax = thread_partition_array(eps_p_fb)
+    out = eps_p_fb.copy('F')     
+    pm.map_noreturn(phe0_postproc, [(out, eps_p_f0, p1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
+    return out
+
+def gena(eps_p_fb, eps_p_f0, p1):
+    cmin, cmax = thread_partition_array(eps_p_fb)        
+    out = eps_p_fb.copy('F')         
+    pm.map_noreturn(gena_postproc, [(out, eps_p_f0, p1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
+    return out
     
-    cmin, cmax = pm.thread_partition_array(sp_sub_b)        
+def genb(eps_p_fb, eps_p_f0):
+    cmin, cmax = thread_partition_array(eps_p_fb)        
+    out = eps_p_fb.copy('F')         
+    pm.map_noreturn(genb_postproc, [(out, eps_p_f0, cmin[i], cmax[i]) for i in xrange(len(cmax))])
+    return out
     
-    pm.map_noreturn(duffy_postproc, [(sp_sub_b, sp_sub_0, p1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
+def gen0(eps_p_fb, eps_p_f0):
+    cmin, cmax = thread_partition_array(eps_p_fb)        
+    out = eps_p_fb.copy('F')         
+    pm.map_noreturn(gen0_postproc, [(out, eps_p_f0, cmin[i], cmax[i]) for i in xrange(len(cmax))])
+    return out
     
-    return sp_sub_b
+map_postproc = [phe0, gena, genb, gen0]
 
 def validate_postproc(**non_cov_columns):
     """
