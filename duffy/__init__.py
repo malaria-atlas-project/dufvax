@@ -4,6 +4,7 @@ from cut_geographic import cut_geographic, hemisphere
 import duffy
 from postproc_utils import *
 import pymc as pm
+from pymc import thread_partition_array
 import numpy as np
 import os
 root = os.path.split(duffy.__file__)[0]
@@ -17,28 +18,28 @@ obs_labels = {'sp_sub_b':'eps_p_fb','sp_sub_0':'eps_p_f0'}
 def check_data(ra):
     pass
 
-def phe0(eps_p_fb, eps_p_f0, p1):
-    cmin, cmax = thread_partition_array(eps_p_fb)
-    out = eps_p_fb.copy('F')     
-    pm.map_noreturn(phe0_postproc, [(out, eps_p_f0, p1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
+def phe0(sp_sub_b, sp_sub_0, p1):
+    cmin, cmax = thread_partition_array(sp_sub_b)
+    out = sp_sub_b.copy('F')     
+    pm.map_noreturn(phe0_postproc, [(out, sp_sub_0, p1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
     return out
 
-def gena(eps_p_fb, eps_p_f0, p1):
-    cmin, cmax = thread_partition_array(eps_p_fb)        
-    out = eps_p_fb.copy('F')         
-    pm.map_noreturn(gena_postproc, [(out, eps_p_f0, p1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
+def gena(sp_sub_b, sp_sub_0, p1):
+    cmin, cmax = thread_partition_array(sp_sub_b)        
+    out = sp_sub_b.copy('F')         
+    pm.map_noreturn(gena_postproc, [(out, sp_sub_0, p1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
     return out
     
-def genb(eps_p_fb, eps_p_f0):
-    cmin, cmax = thread_partition_array(eps_p_fb)        
-    out = eps_p_fb.copy('F')         
-    pm.map_noreturn(genb_postproc, [(out, eps_p_f0, cmin[i], cmax[i]) for i in xrange(len(cmax))])
+def genb(sp_sub_b, sp_sub_0):
+    cmin, cmax = thread_partition_array(sp_sub_b)        
+    out = sp_sub_b.copy('F')         
+    pm.map_noreturn(genb_postproc, [(out, sp_sub_0, cmin[i], cmax[i]) for i in xrange(len(cmax))])
     return out
     
-def gen0(eps_p_fb, eps_p_f0):
-    cmin, cmax = thread_partition_array(eps_p_fb)        
-    out = eps_p_fb.copy('F')         
-    pm.map_noreturn(gen0_postproc, [(out, eps_p_f0, cmin[i], cmax[i]) for i in xrange(len(cmax))])
+def gen0(sp_sub_b, sp_sub_0):
+    cmin, cmax = thread_partition_array(sp_sub_b)        
+    out = sp_sub_b.copy('F')         
+    pm.map_noreturn(gen0_postproc, [(out, sp_sub_0, cmin[i], cmax[i]) for i in xrange(len(cmax))])
     return out
     
 map_postproc = [phe0, gena, genb, gen0]
