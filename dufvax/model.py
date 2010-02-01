@@ -90,7 +90,8 @@ for i in xrange(4):
 for i in xrange(1000):
     pb,p0,p1 = np.random.random(size=3)
     np.testing.assert_almost_equal(np.sum([gfi(pb,p0,p1) for gfi in g_freqs.values()]),1.)
-    
+
+#TODO: Cut both Duffy and Vivax    
 def make_model(lon,lat,covariate_values,n,datatype,
                 genaa,genab,genbb,gen00,gena0,genb0,gena1,genb1,gen01,gen11,
                 pheab,phea,pheb,
