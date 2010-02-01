@@ -1,3 +1,4 @@
+
 # Copyright (C) 2009 Anand Patil
 # 
 # This program is free software: you can redistribute it and/or modify
@@ -14,12 +15,12 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-
 from setuptools import setup
 from numpy.distutils.misc_util import Configuration
 import os
 config = Configuration('dufvax',parent_package=None,top_path=None)
 
+config.add_extension(name='postproc_utils',sources=['dufvax/postproc_utils.f'])
 
 
 config.packages = ["dufvax"]
