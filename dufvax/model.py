@@ -25,17 +25,17 @@ import pymc as pm
 import gc
 from map_utils import *
 from generic_mbg import *
+from st_cov_fun import *
 import generic_mbg
+import warnings
 
 __all__ = ['make_model']
 
-def covariance_submodel(suffix, mesh, covariate_values):
+def covariance_submodel(suffix, mesh, covariate_values, temporal=False):
     """
     A small function that creates the mean and covariance object
     of the random field.
     """
-    
-    # from duffy import cut_matern
     
     # The partial sill.
     amp = pm.Exponential('amp_%s'%suffix, .1, value=1.)
@@ -54,7 +54,7 @@ def covariance_submodel(suffix, mesh, covariate_values):
     
     # The nugget variance. Lower-bounded to preserve mixing.
     V = pm.Exponential('V_%s'%suffix, .1, value=1.)
-    tau = pm.Lambda('tau_%s'%suffix, lambda V: 1./V)
+    
     @pm.potential
     def V_bound(V=V):
         if V<.1:
@@ -62,11 +62,37 @@ def covariance_submodel(suffix, mesh, covariate_values):
         else:
             return 0
     
-    # Create the covariance & its evaluation at the data locations.
-    @pm.deterministic(trace=True,name='C_%s'%suffix)
-    def C(amp=amp, scale=scale, diff_degree=diff_degree):
-        eval_fun = CovarianceWithCovariates(pm.gp.matern.geo_rad, mesh, covariate_values)
-        return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, diff_degree=diff_degree)
+    if temporal:
+        inc = 0
+        ecc = 0
+        # Exponential prior on the temporal scale/range, phi_t. Standard one-over-x
+        # doesn't work bc data aren't strong enough to prevent collapse to zero.
+        scale_t = pm.Exponential('scale_t_%s'%suffix, .1,value=.1)
+
+        # Uniform prior on limiting correlation far in the future or past.
+        t_lim_corr = pm.Uniform('t_lim_corr_%s'%suffix,0,1,value=.01)
+
+        # # Uniform prior on sinusoidal fraction in temporal variogram
+        sin_frac = pm.Uniform('sin_frac_%s'%suffix,0,1,value=.01)
+        
+        @pm.potential(name='st_constraint_%s'%suffix)
+        def st_constraint(sd=.5, sf=sin_frac, tlc=t_lim_corr):    
+            if -sd >= 1./(-sf*(1-tlc)+tlc):
+                return -np.Inf
+            else:
+                return 0.
+                
+        @pm.deterministic(trace=True,name='C_%s'%suffix)
+        def C(amp=amp,scale=scale,inc=inc,ecc=ecc,scale_t=scale_t, t_lim_corr=t_lim_corr, sin_frac=sin_frac):
+            return pm.gp.FullRankCovariance(my_st, amp=amp, scale=scale, inc=inc, ecc=ecc,st=scale_t, sd=.5,
+                                            tlc=t_lim_corr, sf = sin_frac)
+
+    else:
+        # Create the covariance & its evaluation at the data locations.
+        @pm.deterministic(trace=True,name='C_%s'%suffix)
+        def C(amp=amp, scale=scale, diff_degree=diff_degree):
+            eval_fun = CovarianceWithCovariates(pm.gp.matern.geo_rad, mesh, covariate_values)
+            return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, diff_degree=diff_degree)
     
     # Create the mean function    
     @pm.deterministic(trace=True, name='M_%s'%suffix)
@@ -106,41 +132,17 @@ for i in xrange(1000):
     np.testing.assert_almost_equal(np.sum([gfi(pb,p0,p1) for gfi in g_freqs.values()]),1.)
 
 def zipmap(f, keys):
-    return dict(zip([keys, map(f, keys)]))
+    return dict(zip(keys, map(f, keys)))
 
-#TODO: Cut both Duffy and Vivax    
-def make_model(lon,lat,covariate_values,n,datatype,
-                genaa,genab,genbb,gen00,gena0,genb0,gena1,genb1,gen01,gen11,
-                pheab,phea,pheb,
-                phe0,prom0,promab,
-                aphea,aphe0,
-                bpheb,bphe0,
-                vivax_pos,vivax_neg,
-                cpus=1):
-    """
-    This function is required by the generic MBG code.
-    """
-    # Step method granularity    
-    grainsize = 5
-    
-    where_duffy = np.where(np.isnan(vivax_pos))
-    where_vivax = np.where(True-np.isnan(vivax_pos))
-    
-    # Rebind input variables for convenience
-    # for dlab in ['genaa','genab','genbb','gen00','gena0','genb0','gena1','genb1','gen01','gen11','pheab','phea','pheb','phe0','prom0','promab','aphea','aphe0','bpheb','bphe0']:
-    #     exec('%s=%s[where_duffy]'(%dlab,dlab))
-        
-    # Non-unique data locations
-    data_mesh = combine_spatial_inputs(lon, lat)
-    
-    # Uniquify the data locations.
-    locs = [(lon[0], lat[0])]
+def uniquify(*cols):
+
+    locs = [tuple([col[0] for col in cols])]
     fi = [0]
     ui = [0]
-    for i in xrange(1,len(lon)):
+    for i in xrange(1,len(cols[0])):
         
         # If repeat location, add observation
-        loc = (lon[i], lat[i])
+        loc = tuple([col[i] for col in cols])
         if loc in locs:
             fi.append(locs.index(loc))
             
@@ -153,11 +155,49 @@ def make_model(lon,lat,covariate_values,n,datatype,
     ti = [np.where(fi == i)[0] for i in xrange(max(fi)+1)]
     ui = np.asarray(ui)
     
-    # Unique data locations
-    logp_mesh = combine_spatial_inputs(np.array(locs)[:,0],np.array(locs)[:,1])
+    locs = np.array(locs)
+    if len(cols)==3:
+        data_mesh = combine_st_inputs(*cols)
+        logp_mesh = combine_st_inputs(locs[:,0], locs[:,1], locs[:,2])
+    else:
+        data_mesh = combine_spatial_inputs(*cols)
+        logp_mesh = combine_spatial_inputs(locs[:,0], locs[:,1])
+        
+    return data_mesh, logp_mesh, fi, ui, ti
+    
+
+#TODO: Cut both Duffy and Vivax    
+def make_model(lon,lat,t,covariate_values,n,datatype,
+                genaa,genab,genbb,gen00,gena0,genb0,gena1,genb1,gen01,gen11,
+                pheab,phea,pheb,
+                phe0,prom0,promab,
+                aphea,aphe0,
+                bpheb,bphe0,
+                vivax_pos,vivax_neg,
+                lo_age, up_age,
+                cpus=1):
+    """
+    This function is required by the generic MBG code.
+    """
+    # Step method granularity    
+    grainsize = 5
+    
+    where_vivax = np.where(datatype=='vivax')
+    
+    
+    # Rebind input variables for convenience
+    # for dlab in ['genaa','genab','genbb','gen00','gena0','genb0','gena1','genb1','gen01','gen11','pheab','phea','pheb','phe0','prom0','promab','aphea','aphe0','bpheb','bphe0']:
+    #     exec('%s=%s[where_duffy]'(%dlab,dlab))
+    
+    # Duffy needs to be modelled everywhere Duffy or Vivax is observed.
+    # Vivax only needs to be modelled where Vivax is observed.
+    # Complication: Vivax can have multiple co-located observations at different times,
+    # all corresponding to the same Duffy observation.
+    duffy_data_mesh, duffy_logp_mesh, duffy_fi, duffy_ui, duffy_ti = uniquify(lon,lat)
+    vivax_data_mesh, vivax_logp_mesh, vivax_fi, vivax_ui, vivax_ti = uniquify(lon[where_vivax],lat[where_vivax],t[where_vivax])
+    
     
     # Create the mean & its evaluation at the data locations.
-    print data_mesh.shape
     init_OK = False
     
     # Probability of mutation in the promoter region, given that the other thing is a.
@@ -165,44 +205,67 @@ def make_model(lon,lat,covariate_values,n,datatype,
     
     vivax_keys = set(covariate_values.keys())
     vivax_keys.remove('africa')
-    vivax_covariate_values = dict([(k,covariate_values[k]) for k in vivax_keys])
-    covariate_value_dict = {'b': {'africa': covariate_values['africa']},
+
+    warnings.warn('Zeroing all covariates for testing purposes')
+    [covariate_values[k].fill(0) for k in covariate_values.iterkeys()]
+    vivax_covariate_values = dict([(k,covariate_values[k][vivax_ui]) for k in vivax_keys])
+    logp_mesh_dict = {'b': duffy_logp_mesh, '0': duffy_logp_mesh, 'v': vivax_logp_mesh}
+    temporal_dict = {'b': False, '0': False, 'v': True}
+    covariate_value_dict = {'b': {'africa': covariate_values['africa'][duffy_ui]},
                             '0': {},
                             'v': vivax_covariate_values}
     
     while not init_OK:
-        try:
-            spatial_vars = zipmap(lambda k: covariance_submodel(k, logp_mesh, covariate_value_dict[k]), ['b,0,v'])
-            sp_sub = zipmap(lambda k: spatial_vars[k]['sp_sub'], ['b,0,v'])
-            V = zipmap(lambda k: spatial_vars[k]['V'], ['b,0,v'])
-            
-            # Loop over data clusters, adding nugget and applying link function.
-            f = zipmap(lambda k: spatial_vars[k]['sp_sub'].f_eval, ['b,0,v'])
-            eps_p_f_d = {'b':[], '0':[], 'v':[]}
-            p_d = {'b':[], '0': [], 'v': []}
-            eps_p_f = {}
-                    
-            for k in ['b','0','v']:    
-                for i in xrange(np.ceil(len(n)/float(grainsize))):
-                    sl = slice(i*grainsize,(i+1)*grainsize,None)                
-                    if sl.stop>sl.start:
-                    
-                        this_f[k] = f[k][fi[sl]]
+        # try:
+        spatial_vars = zipmap(lambda k: covariance_submodel(k, logp_mesh_dict[k], covariate_value_dict[k], temporal_dict[k]), ['b','0','v'])
+        sp_sub = zipmap(lambda k: spatial_vars[k]['sp_sub'], ['b','0','v'])
+        V = zipmap(lambda k: spatial_vars[k]['V'], ['b','0','v'])
+        tau = zipmap(lambda k: 1./spatial_vars[k]['V'], ['b','0','v'])
+        
+        # Loop over data clusters, adding nugget and applying link function.
+        f = zipmap(lambda k: spatial_vars[k]['sp_sub'].f_eval, ['b','0','v'])
+        init_OK = True
+    # except pm.ZeroProbability, msg:
+    #     print 'Trying again: %s'%msg
+    #     init_OK = False
+    #     gc.collect()        
 
-                        # Nuggeted field in this cluster
-                        eps_p_f_d[k].append(pm.Normal('eps_p_f%s_%i'%(k,i), this_f[k], 1./V[k], value=np.random.normal(size=np.shape(this_f[k].value)), trace=False))
-                
-                        # The allele frequency
-                        p_d[k].append(pm.Lambda('p%s_%i'%(k,i),lambda lt=eps_p_f_d[k][-1]: invlogit(np.atleast_1d(lt)),trace=False))
-
-                # The fields plus the nugget
-                eps_p_f[k] = pm.Lambda('eps_p_f%s'%k, lambda eps_p_f_d=eps_p_f_d[k]: np.hstack(eps_p_f_d))
+    eps_p_f_d = {'b':[], '0':[], 'v':[]}
+    p_d = {'b':[], '0': [], 'v': []}
+    eps_p_f = {}
+        
+    # Duffy eps_p_f's and p's, eval'ed everywhere.
+    for k in ['b','0']:    
+        for i in xrange(np.ceil(len(n)/float(grainsize))):
+            sl = slice(i*grainsize,(i+1)*grainsize,None)                
+            if sl.stop>sl.start:
             
-            init_OK = True
-        except pm.ZeroProbability, msg:
-            print 'Trying again: %s'%msg
-            init_OK = False
-            gc.collect()
+                this_f = f[k][duffy_fi[sl]]
+
+                # Nuggeted field in this cluster
+                eps_p_f_d[k].append(pm.Normal('eps_p_f%s_%i'%(k,i), this_f, tau[k], value=np.random.normal(size=np.shape(this_f.value)), trace=False))
+        
+                # The allele frequency
+                p_d[k].append(pm.Lambda('p%s_%i'%(k,i),lambda lt=eps_p_f_d[k][-1]: invlogit(np.atleast_1d(lt)),trace=False))
+
+        # The fields plus the nugget
+        eps_p_f[k] = pm.Lambda('eps_p_f%s'%k, lambda eps_p_f_d=eps_p_f_d[k]: np.hstack(eps_p_f_d))
+        
+    # Vivax eps_p_f's and p's, only eval'ed on vivax points.
+    for i in xrange(np.ceil(len(n[where_vivax])/float(grainsize))):
+        sl = slice(i*grainsize,(i+1)*grainsize,None)                
+        if sl.stop>sl.start:
+        
+            this_f = f['v'][vivax_fi[sl]]
+
+            # Nuggeted field in this cluster
+            eps_p_f_d['v'].append(pm.Normal('eps_p_fv_%i'%i, this_f, tau['v'], value=np.random.normal(size=np.shape(this_f.value)), trace=False))
+    
+            # The allele frequency
+            p_d['v'].append(pm.Lambda('p%s_%i'%(k,i),lambda lt=eps_p_f_d['v'][-1]: invlogit(np.atleast_1d(lt)),trace=False))
+
+    # The fields plus the nugget
+    eps_p_f['v'] = pm.Lambda('eps_p_fv', lambda eps_p_f_d=eps_p_f_d['v']: np.hstack(eps_p_f_d))    
 
     # The likelihoods.
     data_d = []    
@@ -215,7 +278,7 @@ def make_model(lon,lat,covariate_values,n,datatype,
             break
         
         # See duffy/doc/model.tex for explanations of the likelihoods.
-        pb,p0,pv = map(lambda k: p_d[k][sl_ind][j], ['b,0,v'])
+        pb,p0 = map(lambda k: p_d[k][sl_ind][sub_ind], ['b','0'])
         
         if datatype[i]=='prom':
             cur_obs = [prom0[i], promab[i]]
@@ -258,6 +321,14 @@ def make_model(lon,lat,covariate_values,n,datatype,
             data_d.append(pm.Multinomial('data_%i'%i, p=p, n=n, value=cur_obs, observed=True))
         
         elif datatype[i]=='vivax':
+            # Since the vivax 'p' uses a different indexing system,
+            # figure out which element of vivax 'p' to grab to correspond
+            # to the i'th row of the datafile.
+            i_vivax = np.where(where_vivax[0]==i)[0][0]
+            sl_ind_vivax = int(i_vivax/grainsize)
+            sub_ind_vivax = i_vivax%grainsize
+            pv = p_d['v'][sl_ind_vivax][sub_ind_vivax]
+            
             cur_obs = np.array([vivax_pos[i], vivax_neg[i]])
             n = np.sum(cur_obs)
             pphe0 = pm.Lambda('pphe0_%i'%i, lambda pb=pb, p0=p0, p1=p1: (g_freqs['00'](pb,p0,p1)+g_freqs['01'](pb,p0,p1)+g_freqs['11'](pb,p0,p1)))

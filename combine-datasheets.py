@@ -13,9 +13,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+# FIXME: Need to extract urban, rural from asciis, Otherwise they'll be
+# FIXME: NaN at some points.
+
 import sys
 from pylab import csv2rec, rec2csv
 import numpy as np
+import warnings
 
 duffy_datafile, vivax_datafile = sys.argv[1:]
 combined_datafile = duffy_datafile.split('.')[0]+'_+_'+vivax_datafile.split('.')[0]+'.csv'
@@ -32,7 +36,7 @@ tstart = vivax_data.yestart + (vivax_data.mostart-1)/12.
 tend = vivax_data.yeend + (vivax_data.moend-1)/12.
 
 weirdcols = ['lon','lat','t','vivax_pos','vivax_neg','n','datatype']
-vivaxcols = ['pos','neg','lo_age','up_age','urban','rural',]
+vivaxcols = ['lo_age','up_age','urban','rural',]
 duffycols = ['genaa','genab','genbb','gen00','gena0','genb0','gena1','genb1','gen01','gen11',
             'africa','pheab','phea','pheb','phe0','prom0','promab','aphea','aphe0','bpheb',
             'bphe0']
@@ -47,46 +51,15 @@ coldict['vivax_neg'] = np.concatenate((duffy_nan,vivax_data.neg))
 coldict['datatype'] = np.concatenate((duffy_data.datatype, np.repeat('vivax',n_vivax)))
 
 for colname in vivaxcols:
-    coldict[colname] = np.concatenate((vivax_data[colname], duffy_nan))
+    coldict[colname] = np.concatenate((duffy_nan, vivax_data[colname]))
     
 for colname in duffycols:
-    coldict[colname] = np.concatenate((vivax_nan, duffy_data[colname]))
+    coldict[colname] = np.concatenate((duffy_data[colname], vivax_nan))
 
 allcols = coldict.keys()
 combined_data = np.rec.fromarrays([coldict[col] for col in allcols], names=allcols)
 
 
-# Checks
-def testcol(predicate, col):
-    where_fail = np.where(predicate(combined_data[col]))
-    if len(where_fail[0])>0:
-        raise ValueError, 'Test %s fails. %s \nFailure at rows %s'%(predicate.__name__, predicate.__doc__, where_fail[0]+1)
-        
-def loncheck(lon):
-    """Makes sure longitudes are between -180 and 180."""
-    return np.abs(lon)>180. + np.isnan(lon)
-testcol(loncheck,'lon')
-    
-def latcheck(lat):
-    """Makes sure latitudes are between -90 and 90."""
-    return np.abs(lat)>180. + np.isnan(lat)
-testcol(latcheck,'lat')
-
-def duffytimecheck(t):
-    """Makes sure times are between 1985 and 2010"""
-    return True-((t[n_vivax:]>=1985) + (t[n_vivax:]<=2010))
-testcol(duffytimecheck,'t')
-    
-def dtypecheck(datatype):
-    """Makes sure all datatypes are recognized."""
-    return True-((datatype=='gen')+(datatype=='prom')+(datatype=='aphe')+(datatype=='bphe')+(datatype=='phe')+(datatype=='vivax'))
-testcol(dtypecheck,'datatype')
-
-def ncheck(n):
-    """Makes sure n>0 and not nan"""
-    return (n==0)+np.isnan(n)
-testcol(ncheck,'n')
-
-
 # Write out
-rec2csv(combined_data, combined_datafile)
+warnings.warn('Thinning for testing purposes!')
+rec2csv(combined_data[::50], combined_datafile)

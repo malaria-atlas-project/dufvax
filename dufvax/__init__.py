@@ -1,7 +1,8 @@
 # from mcmc import *
 from model import *
-from generic_mbg import FieldStepper, thread_partition_array
-from cut_geographic import cut_geographic, hemisphere
+from generic_mbg import FieldStepper
+from pymc import thread_partition_array
+from pymc.gp import GPEvaluationGibbs
 import dufvax
 from postproc_utils import *
 import pymc as pm
@@ -10,8 +11,56 @@ import os
 root = os.path.split(dufvax.__file__)[0]
 pm.gp.cov_funs.cov_utils.mod_search_path.append(root)
 
-# Stuff mandated by the new map_utils standard
-cut_matern = pm.gp.cov_utils.covariance_wrapper('matern', 'pymc.gp.cov_funs.isotropic_cov_funs', {'diff_degree': 'The degree of differentiability of realizations.'}, 'cut_geographic', 'cg')
+def check_data(input):
+    
+    # Make sure there are no 'nan's.
+    required_columns = {'phe': ['pheab','phea','pheb','phe0'],
+                        'prom': ['prom0', 'promab'],
+                        'aphe': ['aphea', 'aphe0'],
+                        'bphe': ['bpheb', 'bphe0'],
+                        'gen': ['genaa', 'genab', 'gena0', 'gena1', 'genbb', 'genb0', 'genb1', 'gen00', 'gen01', 'gen11'],
+                        'vivax': ['vivax_pos', 'vivax_neg', 't', 'lo_age', 'up_age']}
+    for datatype in ['phe','prom','aphe','bphe','gen','vivax']:
+        this_data = input[np.where(input.datatype==datatype)]
+        for c in required_columns[datatype]:
+            if np.any(np.isnan(this_data[c])) or np.any(this_data[c]<0):
+                raise ValueError, 'Datatype %s has nans or negs in col %s'%(datatype,c)
+                
+    if np.any([np.isnan(input[k]) for k in ['lon','lat']]):
+        raise ValueError, 'Some nans in %s'%k
+    
+    # Column-specific checks
+    def testcol(predicate, col):
+        where_fail = np.where(predicate(input[col]))
+        if len(where_fail[0])>0:
+            raise ValueError, 'Test %s fails. %s \nFailure at rows %s'%(predicate.__name__, predicate.__doc__, where_fail[0]+1)
+
+    n_vivax = np.sum(input.datatype=='vivax')
+
+    def loncheck(lon):
+        """Makes sure longitudes are between -180 and 180."""
+        return np.abs(lon)>180. + np.isnan(lon)
+    testcol(loncheck,'lon')
+
+    def latcheck(lat):
+        """Makes sure latitudes are between -90 and 90."""
+        return np.abs(lat)>180. + np.isnan(lat)
+    testcol(latcheck,'lat')
+
+    def duffytimecheck(t):
+        """Makes sure times are between 1985 and 2010"""
+        return True-((t[n_vivax:]>=1985) + (t[n_vivax:]<=2010))
+    testcol(duffytimecheck,'t')
+
+    def dtypecheck(datatype):
+        """Makes sure all datatypes are recognized."""
+        return True-((datatype=='gen')+(datatype=='prom')+(datatype=='aphe')+(datatype=='bphe')+(datatype=='phe')+(datatype=='vivax'))
+    testcol(dtypecheck,'datatype')
+
+    def ncheck(n):
+        """Makes sure n>0 and not nan"""
+        return (n==0)+np.isnan(n)
+    testcol(ncheck,'n')
  
 f_labels = ['eps_p_fb', 'eps_p_f0', 'eps_p_fv']
 fs_have_nugget = {'eps_p_fb': True, 'eps_p_f0': True, 'eps_p_fv': True}
@@ -53,20 +102,15 @@ def validate_postproc(**non_cov_columns):
     """
     raise NotImplementedError
     
-metadata_keys = ['fi','ti','ui']
+metadata_keys = []
 
 def mcmc_init(M):
-    M.use_step_method(FieldStepper, M.fb, M.V_b, M.C_eval_b, M.M_eval_b, M.logp_mesh, M.eps_p_fb, M.ti)
-    M.use_step_method(FieldStepper, M.f0, M.V_0, M.C_eval_0, M.M_eval_0, M.logp_mesh, M.eps_p_f0, M.ti)
-    for tup in zip(M.eps_p_fb_d, M.eps_p_f0_d):
-        M.use_step_method(pm.AdaptiveMetropolis, tup)
-        # for v in tup:
-        #     M.use_step_method(pm.Metropolis, v)
-    # scalar_stochastics = []
-    # for v in M.stochastics:
-    #     if v not in M.eps_p_fb_d and v not in M.eps_p_f0_d and np.squeeze(v.value).shape == ():
-    #         scalar_stochastics.append(v)
-    # M.use_step_method(pm.AdaptiveMetropolis, scalar_stochastics)
+    for k in ['b','0','v']:
+        M.use_step_method(GPEvaluationGibbs, M.sp_sub[k], M.V[k], M.eps_p_f[k])
+    
+    for k in ['b','0','v']:
+        for epf in M.eps_p_f_d[k]:
+            M.use_step_method(pm.AdaptiveMetropolis, epf)
             
 
 non_cov_columns = { 'n': 'int',
@@ -90,6 +134,8 @@ non_cov_columns = { 'n': 'int',
                     'aphea': 'float',
                     'aphe0': 'float',
                     'bpheb': 'float',
-                    'bphe0': 'float'
+                    'bphe0': 'float',
                     'vivax_pos': 'float',
-                    'vivax_neg': 'float'}
+                    'vivax_neg': 'float',
+                    'lo_age': 'float',
+                    'up_age': 'float'}
