@@ -44,8 +44,9 @@ def covariance_submodel(suffix, mesh, covariate_values):
     # 1 radian = the radius of the earth, about 6378.1 km
     # scale = pm.Exponential('scale', 1./.08, value=.08)
     
-    scale_shift = pm.Exponential('scale_shift_%s'%suffix, .1, value=.08)
-    scale = pm.Lambda('scale_%s'%suffix,lambda s=scale_shift: s+.01)
+    scale = pm.Uniform('scale_%s'%suffix,.01,2,value=.08)
+    # scale_shift = pm.Exponential('scale_shift_%s'%suffix, .1, value=.08)
+    # scale = pm.Lambda('scale_%s'%suffix,lambda s=scale_shift: s+.01)
     scale_in_km = scale*6378.1
     
     # This parameter controls the degree of differentiability of the field.
@@ -53,6 +54,7 @@ def covariance_submodel(suffix, mesh, covariate_values):
     
     # The nugget variance. Lower-bounded to preserve mixing.
     V = pm.Exponential('V_%s'%suffix, .1, value=1.)
+    tau = pm.Lambda('tau_%s'%suffix, lambda V: 1./V)
     @pm.potential
     def V_bound(V=V):
         if V<.1:
@@ -102,54 +104,95 @@ for i in xrange(4):
 for i in xrange(1000):
     pb,p0,p1 = np.random.random(size=3)
     np.testing.assert_almost_equal(np.sum([gfi(pb,p0,p1) for gfi in g_freqs.values()]),1.)
-    
+
+#TODO: Cut both Duffy and Vivax    
 def make_model(lon,lat,covariate_values,n,datatype,
                 genaa,genab,genbb,gen00,gena0,genb0,gena1,genb1,gen01,gen11,
                 pheab,phea,pheb,
                 phe0,prom0,promab,
                 aphea,aphe0,
                 bpheb,bphe0,
+                vivax_pos,vivax_neg,
                 cpus=1):
     """
     This function is required by the generic MBG code.
     """
     # Step method granularity    
     grainsize = 5
+    
+    where_duffy = np.where(np.isnan(vivax_pos))
+    duflon, duflat = lon[where_duffy], lat[where_duffy]
+
+    # Rebind input variables for convenience
+    # for dlab in ['genaa','genab','genbb','gen00','gena0','genb0','gena1','genb1','gen01','gen11','pheab','phea','pheb','phe0','prom0','promab','aphea','aphe0','bpheb','bphe0']:
+    #     exec('%s=%s[where_duffy]'(%dlab,dlab))
         
     # Non-unique data locations
-    logp_mesh = combine_spatial_inputs(lon, lat)
+    duffy_data_mesh = combine_spatial_inputs(duflon, duflat)
+    
+    # Uniquify the data locations.
+    locs = [(duflon[0], duflat[0])]
+    fi = [0]
+    ui = [0]
+    for i in xrange(1,len(duflon)):
+        
+        # If repeat location, add observation
+        loc = (duflon[i], duflat[i])
+        if loc in locs:
+            fi.append(locs.index(loc))
+            
+        # Otherwise, new obs
+        else:
+            locs.append(loc)
+            fi.append(max(fi)+1)
+            ui.append(i)
+    fi = np.array(fi)
+    ti = [np.where(fi == i)[0] for i in xrange(max(fi)+1)]
+    ui = np.asarray(ui)
+    
+    duflon = np.array(locs)[:,0]
+    duflat = np.array(locs)[:,1]
+    
+    # Unique data locations
+    duffy_logp_mesh = combine_spatial_inputs(duflon,duflat)
+    
+    # Create the mean & its evaluation at the data locations.
+    print data_mesh.shape
     init_OK = False
     
     # Probability of mutation in the promoter region, given that the other thing is a.
     p1 = pm.Uniform('p1', 0, .04, value=.01)
     
     while not init_OK:
-        try:      
+        try:
             
-            # Spatial submodels
-            spatial_b_vars = covariance_submodel('b',logp_mesh,covariate_values)
-            spatial_0_vars = covariance_submodel('0',logp_mesh,{})
+            spatial_b_vars = covariance_submodel('b',duffy_logp_mesh,{'africa': covariate_values['africa']})
+            spatial_0_vars = covariance_submodel('0',duffy_logp_mesh,{})
+            spatial_v_vars = covariance_submodel('v',vivax_logp_mesh,vivax_covariate_values)
             sp_sub_b = spatial_b_vars['sp_sub']
-            sp_sub_0 = spatial_0_vars['sp_sub']
-            
+            sp_sub_0 = spatial_0_vars['sp_sub']        
+            sp_sub_v = spatial_v_vars['sp_sub']
+                                
             # Loop over data clusters, adding nugget and applying link function.
             eps_p_f0_d = []
             p0_d = []
             eps_p_fb_d = []
             pb_d = []
+
             V_b = spatial_b_vars['V']
-            V_0 = spatial_0_vars['V']            
-        
+            V_0 = spatial_0_vars['V']     
+            V_v = spatial_v_vars['v']       
+            
             for i in xrange(np.ceil(len(n)/float(grainsize))):
                 sl = slice(i*grainsize,(i+1)*grainsize,None)
                 
                 if sl.stop>sl.start:
-                    this_fb = pm.Lambda('fb_%i'%i, lambda f=sp_sub_b.f_eval, sl=sl: f[sl], trace=False)
-                    this_f0 = pm.Lambda('f0_%i'%i, lambda f=sp_sub_0.f_eval, sl=sl: f[sl], trace=False)
+                    this_fb = pm.Lambda('fb_%i'%i, lambda f=fb, sl=sl, fi=fi: f[fi[sl]], trace=False)
+                    this_f0 = pm.Lambda('f0_%i'%i, lambda f=f0, sl=sl, fi=fi: f[fi[sl]], trace=False)
 
                     # Nuggeted field in this cluster
-                    eps_p_fb_d.append(pm.Normal('eps_p_fb_%i'%i, this_fb, 1./V_b, value=np.random.normal(size=np.shape(this_fb.value)), trace=False))
-                    eps_p_f0_d.append(pm.Normal('eps_p_f0_%i'%i, this_f0, 1./V_0, value=np.random.normal(size=np.shape(this_fb.value)), trace=False))
+                    eps_p_fb_d.append(pm.Normal('eps_p_fb_%i'%i, this_fb, tau_b, value=np.random.normal(size=np.shape(this_fb.value)), trace=False))
+                    eps_p_f0_d.append(pm.Normal('eps_p_f0_%i'%i, this_f0, tau_0, value=np.random.normal(size=np.shape(this_fb.value)), trace=False))
                 
                     # The allele frequency
                     pb_d.append(pm.Lambda('pb_%i'%i,lambda lt=eps_p_fb_d[-1]: invlogit(np.atleast_1d(lt)),trace=False))
