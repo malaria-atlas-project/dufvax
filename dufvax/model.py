@@ -50,7 +50,7 @@ def covariance_submodel(suffix, mesh, covariate_values, temporal=False):
     scale_in_km = scale*6378.1
     
     # This parameter controls the degree of differentiability of the field.
-    diff_degree = pm.Uniform('diff_degree_%s'%suffix, .5, 3)
+    diff_degree = pm.Uniform('diff_degree_%s'%suffix, .5, 3, value=.5)
     
     # The nugget variance. Lower-bounded to preserve mixing.
     V = pm.Exponential('V_%s'%suffix, .1, value=1.)
@@ -134,6 +134,45 @@ for i in xrange(1000):
 def zipmap(f, keys):
     return dict(zip(keys, map(f, keys)))
 
+def uniquify_tol(disttol, ttol, *cols):
+    locs = [tuple([col[0] for col in cols])]
+    fi = [0]
+    ui = [0]
+    dx = np.empty(1)
+    for i in xrange(1,len(cols[0])):
+
+        # If repeat location, add observation
+        loc = np.array([col[i] for col in cols])
+        for j in xrange(len(locs)):
+            pm.gp.geo_rad(dx, np.atleast_2d(loc[:2]*np.pi/180.), np.atleast_2d(locs[j][:2]))
+            if len(cols)>2:
+                dt = np.abs(loc[2]-locs[j][2])
+            else:
+                dt = 0
+            if dx[0]<=disttol and dt<=ttol:
+                fi.append(j)
+                break
+
+        # Otherwise, new obs
+        else:
+            locs.append(loc)
+            fi.append(max(fi)+1)
+            ui.append(i)
+    fi = np.array(fi)
+    ti = [np.where(fi == i)[0] for i in xrange(max(fi)+1)]
+    ui = np.asarray(ui)
+
+    locs = np.array(locs)
+    if len(cols)==3:
+        data_mesh = combine_st_inputs(*cols)
+        logp_mesh = combine_st_inputs(locs[:,0], locs[:,1], locs[:,2])
+    else:
+        data_mesh = combine_spatial_inputs(*cols)
+        logp_mesh = combine_spatial_inputs(locs[:,0], locs[:,1])
+
+    return data_mesh, logp_mesh, fi, ui, ti
+
+
 def uniquify(*cols):
 
     locs = [tuple([col[0] for col in cols])]
@@ -180,9 +219,10 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
     This function is required by the generic MBG code.
     """
     # Step method granularity    
-    grainsize = 5
+    grainsize = 20
     
     where_vivax = np.where(datatype=='vivax')
+    from dufvax import disttol, ttol
     
     
     # Rebind input variables for convenience
@@ -337,5 +377,8 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
             
         if np.any(np.isnan(cur_obs)):
             raise ValueError
+            
+    from IPython.Debugger import Pdb
+    Pdb(color_scheme='LightBG').set_trace() 
 
     return locals()

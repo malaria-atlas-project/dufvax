@@ -60,6 +60,13 @@ allcols = coldict.keys()
 combined_data = np.rec.fromarrays([coldict[col] for col in allcols], names=allcols)
 
 
+def box_data(data, llcrnrlon, llcrnrlat, urcrnrlon, urcrnrlat):
+    indicator = (data.lon>llcrnrlon)*(data.lon<urcrnrlon)*(data.lat>llcrnrlat)*(data.lat<urcrnrlat)
+    return data[np.where(indicator)]
+    
+
 # Write out
-warnings.warn('Thinning for testing purposes!')
-rec2csv(combined_data[::50], combined_datafile)
+warnings.warn('Boxing')
+# combined_data = combined_data[np.where((combined_data.lon>-19)*(combined_data.lon<54)*(combined_data.lat>0))]
+combined_data = box_data(combined_data, 31.5, 11.5, 64, 32)
+rec2csv(combined_data, combined_datafile)

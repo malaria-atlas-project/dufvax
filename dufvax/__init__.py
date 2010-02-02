@@ -1,4 +1,7 @@
 # from mcmc import *
+disttol = 5./6378.
+ttol = 1./12
+
 from model import *
 from generic_mbg import FieldStepper
 from pymc import thread_partition_array
@@ -10,6 +13,7 @@ import numpy as np
 import os
 root = os.path.split(dufvax.__file__)[0]
 pm.gp.cov_funs.cov_utils.mod_search_path.append(root)
+
 
 def check_data(input):
     
@@ -102,7 +106,7 @@ def validate_postproc(**non_cov_columns):
     """
     raise NotImplementedError
     
-metadata_keys = []
+metadata_keys = ['disttol','ttol']
 
 def mcmc_init(M):
     for k in ['b','0','v']:
