@@ -67,7 +67,7 @@ def covariance_submodel(suffix, mesh, covariate_values, temporal=False):
         ecc = 0
         # Exponential prior on the temporal scale/range, phi_t. Standard one-over-x
         # doesn't work bc data aren't strong enough to prevent collapse to zero.
-        scale_t = pm.Exponential('scale_t_%s'%suffix, .1,value=.1)
+        scale_t = pm.Exponential('scale_t_%s'%suffix, .01,value=.1)
 
         # Uniform prior on limiting correlation far in the future or past.
         t_lim_corr = pm.Uniform('t_lim_corr_%s'%suffix,0,1,value=.01)
@@ -83,7 +83,7 @@ def covariance_submodel(suffix, mesh, covariate_values, temporal=False):
                 return 0.
                 
         @pm.deterministic(trace=True,name='C_%s'%suffix)
-        def C(amp=amp,scale=scale,inc=inc,ecc=ecc,scale_t=scale_t, t_lim_corr=t_lim_corr, sin_frac=sin_frac):
+        def C(amp=amp,scale=scale,inc=inc,ecc=ecc,scale_t=scale_t, t_lim_corr=t_lim_corr, sin_frac=sin_frac, diff_degree=diff_degree):
             eval_fun = CovarianceWithCovariates(my_st, mesh, covariate_values)
             return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, inc=inc, ecc=ecc,st=scale_t, sd=diff_degree,
                                             tlc=t_lim_corr, sf = sin_frac)

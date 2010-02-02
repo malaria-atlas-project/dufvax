@@ -10,6 +10,11 @@
 
 \documentclass[10pt]{article}
 
+% FIXME Remove this
+\usepackage{garamond}
+\usepackage[T1]{fontenc}
+% FIXME end
+
 % amsmath package, useful for mathematical formulas
 \usepackage{amsmath}
 % amssymb package, useful for mathematical symbols
@@ -63,23 +68,27 @@
 
 \begin{document}
 
+% FIXME: Remove this
+\garamond
+
 % Title must be 150 characters or less
 \begin{flushleft}
 {\Large
-\textbf{Bayesian data fusion for spatial prediction of Duffy negativity and \emph{Plasmodium vivax} infection prevalence}
+\textbf{Bayesian data fusion for spatial prediction of \emph{Plasmodium vivax} infection prevalence}
 }
 % Insert Author names, affiliations and corresponding author email.
 \\
-Anand Patil$^{1,\ast}$, 
-Peter W. Gething$^{1}$, 
+Anand Patil$^{1,\ast}$,  
 Rosalind Howes$^{1}$,
-Carlos Guerra$^1$,
+Carlos A. Guerra$^1$,
+Peter W. Gething$^{1}$,
+Robert W. Snow$^2$,
 Simon I. Hay$^1$
 \\
 \bf{1} Malaria Atlas Project, Spatial Ecology and Epidemiology Group, University of Oxford, Oxford, UK
 \\
-% \bf{2} Author2 Dept/Program/Center, Institution Name, City, State, Country
-% \\
+\bf{2} Malaria Public Health and Epidemiology Group, KEMRI, Nairobi, Kenya
+\\
 % \bf{3} Author3 Dept/Program/Center, Institution Name, City, State, Country
 % \\
 $\ast$ E-mail: anand.patil@zoo.ox.ac.uk
@@ -88,28 +97,36 @@ $\ast$ E-mail: anand.patil@zoo.ox.ac.uk
 % Please keep the abstract between 250 and 300 words
 \section*{Abstract}
 
+The authors present a Bayesian spatial analysis of Duffy negativity \emph{P. vivax} endemicity in the middle east. The Duffy negativity dataset contains several types of observations; some data records are observations of blood-group phenotype, whereas some are actual observations of gene frequencies. The likelihood function of the corresponding submodel links all of these observations to three underlying gene frequencies, whose prevalences are modelled as spatial random fields. The \emph{P. vivax} dataset contains records of endemicity, time and the ages of the survey participants. The submodel for \emph{P. vivax} takes into account the temporally variable, seasonal pattern of transmission, and its likelihood function is parameterized by age. The statistical model combines all of the data sources coherently, using science. The predictive map \emph{P. vivax} is clearly informed by the Duffy dataset, resulting in improved accuracy and precision relative to what would have been possible using the vivax data alone. The analysis produces useful maps summarizing our knowledge of \emph{P. vivax} endemicity in the region, with fully quantified prediction uncertainty. It also showcases the ability of Bayesian statistics to fuse multiple data sources in coherent analyses.
+
 % Please keep the Author Summary between 150 and 200 words
 % Use first person. PLoS ONE authors please skip this step. 
 % Author Summary not valid for PLoS ONE submissions.   
 \section*{Author Summary}
 
+Issues in public health and epidemiology are complex and interrelated. People know that, but their methods let them down; traditional statistical methods, especially in spatial statistics, require scientists to try to reduce everything to easily-quantified, isolated components before any `formal' analysis can be conducted. Bayesian statistics is an alternative statistical paradigm that is much more flexible than the dominant one, and in particular can incorporate data from many disparate sources in a sensible way. In this paper, we demonstrate that capability by combining two very different but related datasets in the same geographical-statistical analysis. \emph{Plasmodium vivax} is a strain of human malaria, and Duffy negativity is a genetic trait that protects people from it. By combining data on the prevalence of each, we are able to produce better maps of P. vivax than we could using the vivax data in isolation.
 
 \section*{Introduction}
 
-% Results and Discussion can be combined.
-\section*{Results}
+\emph{P. vivax} is increasingly being recognized as a big public health problem. Historically it wasn't but now it is, because...
 
-\subsection*{Subsection 1}
+So we need to know where it is. Duffy negativity is known to be very strongly related to \emph{P. vivax} in the sense that carriers (with a few exceptions) are refractory to \emph{P. vivax} infection. This is because...
 
-\subsection*{Subsection 2}
+The distribution of \emph{P. vivax} data is spotty, making it difficult to produce good maps globally. The distribution of duffy data tends to complement that of vivax data, and conceptually it seems like it should be possible to learn something about \emph{P. vivax} endemicity from it. However, this is not at all straightforward using standard spatial statistical methods. Univariate methods such as kriging and inverse distance weighting are clearly right out. Cokriging is an option, but it isn't a great fit. Duffy and vivax aren't jointly normally distributed, for one thing. Also, cokriging doesn't take advantage of the hard fact that Duffy negative individuals are refractory.
+
+However, the relationship can be straightforwardly declared in a Bayesian probability model which, with considerable effort, can be fitted using Markov chain Monte Carlo or a related technique.
+
+The resulting model is pretty complicated. Vivax is already a complicated disease, and we capture issues like age dependence, seasonality and secular temporal variation in transmission intensity using techniques piloted by Hay et al. \cite{hay2008}. Duffy negativity, being a genetic trait controlled by a couple of loci, is simpler; however, there are fully six different types of data in our database, and fusing them already results in a geostatistical likelihood function that is more complicated than most you'll come across. 
+
+Bayesian statistics is arguably the only statistical paradigm solid enough to support a logical construction of this size. Setting the model is actually completely straightforward; because of its `forward' declarative nature, Bayesian statistics makes the model construction mirror the scientific concepts. It's not necessary to preprocess, convert, adjust or correct the data. The data go in, exactly as they are, and the way the model combines them is completely explicit.
+
+The resulting maps of \emph{P. vivax} have clearly been informed by the Duffy data. As a side benefit, the Duffy maps are also informed by the \emph{P. vivax} data.
+
+\include{model}
+\include{results} 
 
 \section*{Discussion}
 
-% You may title this section "Methods" or "Models". 
-% "Models" is not a valid title for PLoS ONE authors. However, PLoS ONE
-% authors may use "Analysis" 
-\section*{Analysis}
-\include{model}
 
 % Do NOT remove this, even if you are not including acknowledgments
 \section*{Acknowledgments}

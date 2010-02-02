@@ -1,10 +1,14 @@
+% You may title this section "Methods" or "Models". 
+% "Models" is not a valid title for PLoS ONE authors. However, PLoS ONE
+% authors may use "Analysis" 
+\section*{Analysis}
  
-\subsection*{Duffy model}
+\subsection*{Gene frequencies associated with Duffy negativity}
 The model targets two spatially-varying allele frequencies, the frequency of the Fyb mutation and the frequency of the silencing mutation in the promoter region within Fyb individuals. These are denoted $p_{ab}(x)$ and $p_0(x)$ respectively, where $x$ is a location. A third allele frequency, the frequency of the silencing mutation within Fya individuals, is modeled as a small constant denoted $p_1$. The model for these allele frequencies is as follows:
 \begin{eqnarray*}
     m_{ab} \sim \textup{Normal}(0,10000) \\
     m_0 \sim \textup{Normal}(0,10000)\\
-    \beta_{\mathtt{africa}} \sim \textup{Normal}(0,10000)\\
+    \beta_{\textup{africa}} \sim \textup{Normal}(0,10000)\\
     p_1\sim\textup{Uniform}(0,.4)\\
     \\
     M_{ab}(x) = \beta_{\textup{africa}} 1_{x\textup{\ in\ africa}} + m_{ab}\\
@@ -33,7 +37,7 @@ Both fields use the Mat\`ern covariance function [cite Banerjee]. The range para
 
 The Gaussian random fields are converted to probabilities using the standard inverse logit link function.
 
-\subsection*{Likelihood} % (fold)
+\subsubsection*{Likelihoods} % (fold)
 \label{sec:likelihood}
 
 The a/b switch mutation happens with probability $P(b=1)=p_{ab}(x)$, which should be much higher for $x$ in Africa. Given that $b=1$, the silencing mutation in the promoter region happens with probability $p_0(x)$. Given that $b=0$, the silencing mutation happens with probability $p_1$, which is assumed to be a small, constant value. Hardy-Weinberg assumptions apply to the genotype frequencies.
@@ -76,26 +80,44 @@ The a/b switch mutation happens with probability $P(b=1)=p_{ab}(x)$, which shoul
 
 The sampling distributions are assumed to be multinomial conditional on the appropriate individual phenotype or genotype probabilities described above. This likelihood completes the Bayesian probability model.
 
-\subsection*{Vivax model} 
+\subsection*{\emph{P. vivax} endemicity} 
 Assuming that Duffy negative individuals are refractory to infection by \emph{P. vivax}, the proportion of the population at risk of \emph{P. vivax} infection at location $x$ is $1-p_n(x)$, where the probability $p_n$ that any given individual is phenotypically Duffy negative is 
-\begin{eqnarray*}
+\begin{equation}
+    \label{eq:dn-freq} 
     p_n(x)=\left(p_{ab}(x)p_0(x)\right)^2+2p_{ab}(x)p_0(x)(1-p_{ab}(x))p_1+\left((1-p_{ab}(x))p_1\right)^2.
-\end{eqnarray*}
+\end{equation}
 
 The \emph{P. vivax} endemicity within the population at risk can be modeled as a space-time random field as in \cite{hay2008}:
 \begin{eqnarray*}
     m_v \sim \textup{Normal}(0,10000)\\
-    M_v(x) = m_v\\
+    \beta_{\textup{urban}}\sim \textup{Normal}(0,10000)\\
+    \beta_{\textup{rural}}\sim \textup{Normal}(0,10000)\\
+    \\
+    M_v(x) = \beta_{\textup{urban}}1_{x \textup{ is urban}}+\beta_{\textup{rural}}1_{x \textup{ is rural}}+ m_v\\
+    \\
     \phi_v\sim\textup{Exponential}(.1)\\
     \theta_v\sim\textup{Exponential}(.1)\\
     \nu_v\sim\textup{Uniform}(0,3)\\
-    \rho_v\sim\ldots\\
-    \theta_t\sim\ldots\\
-    V_v\sim\textup{Exponential}(.1)\\
-    C(x_i,t_i;x_j,t_j)=\tau^2\gamma(0)\frac{(\Delta x)^{\gamma(\Delta t)}K_{\gamma(\Delta t)}(\Delta x)}{2^{\gamma(\Delta t)-1}\Gamma(\gamma(\Delta t)+1)},\\ \gamma(\Delta t) = \frac{1}{2\rho+2(1-\rho)\left[(1-\upsilon)e^{-|\Delta t|/\phi_t}+\upsilon\cos(2\pi \Delta t)\right]},\\ \Delta t = |t_i-t_j|
+    \\
+    \rho_t\sim \textup{Uniform}(0,1) \\
+    \theta_t\sim \textup{Exponential}(.01) \\
+    \upsilon_t\sim \textup{Uniform}(0,1)\\
+    V_v\sim\textup{Exponential}(.1)\\   
+    \\ C_v(x,t;y,s)=\tau^2\gamma(0)\frac{d(x,y)/\theta_v^{\gamma(|t-s|)}K_{\gamma(|t-s|)}(d(x,y)/\theta_v)}{2^{\gamma(|t-s|)-1}\Gamma(\gamma(|t-s|)+1)},\\ 
+    % FIXME: Get \nu_v in here.
+    \gamma(|t-s|) = \frac{1}{2\rho+2(1-\rho)\left[(1-\upsilon_v)e^{-|t-s|/\theta_t}+\upsilon_v\cos(2\pi |t-s|)\right]},\\
+    \\
+    f_v\sim\textup{GP}(M_v, C_v)\\
     p_v(x)=\textup{logit}^{-1}(f_{v}(x))
 \end{eqnarray*} 
-A space-time process is more appropriate than a space-only process due to the seasonal and rapid secular changes seen in malaria transmission dynamics \cite{blah}. 
+where $K_\gamma$ is the modified Bessel function of the second kind of order $\gamma$ and $\Gamma$ is the gamma function \cite{whatever you cited in PLOS paper.}  A space-time process is more appropriate than a space-only process due to the seasonal and rapid secular changes seen in malaria transmission dynamics \cite{blah}. 
+
+\subsubsection*{Likelihoods}
+Combining the models for Duffy gene frequencies and \emph{P. vivax} endemicity within the population fraction at risk of infection, the probability that an individual at location $x$ is infected with \emph{P. vivax} is
+\begin{equation}
+    \label{eq:pv-like}
+    p_v(x)(1-p_n(x))
+\end{equation}
 
 \subsection*{Implementation} 
-The model was implemented in the Python programming language \cite{python}. It was fitted with the Markov chain Monte Carlo algorithm \cite[Gilks] using the open-source Bayesian analysis package PyMC \cite{pymc}. Dynamic traces \cite[gilks] are available upon request.
+The model was implemented in the Python programming language \cite{python}. It was fitted with the Markov chain Monte Carlo algorithm \cite{gilks} using the open-source Bayesian analysis package PyMC \cite{pymc}. Dynamic traces \cite{gilks} are available upon request.
