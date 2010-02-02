@@ -331,7 +331,7 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
             
             cur_obs = np.array([vivax_pos[i], vivax_neg[i]])
             n = np.sum(cur_obs)
-            pphe0 = pm.Lambda('pphe0_%i'%i, lambda pb=pb, p0=p0, p1=p1: (g_freqs['00'](pb,p0,p1)+g_freqs['01'](pb,p0,p1)+g_freqs['11'](pb,p0,p1)))
+            pphe0 = pm.Lambda('pphe0_%i'%i, lambda pb=pb, p0=p0, p1=p1: (g_freqs['00'](pb,p0,p1)+g_freqs['01'](pb,p0,p1)+g_freqs['11'](pb,p0,p1)), trace=False)
             p = pm.Lambda('p_%i'%i, lambda pphe0=pphe0, pv=pv: pv*(1-pphe0), trace=False)
             data_d.append(pm.Binomial('data_%i'%i, p=p, n=n, value=vivax_pos[i], observed=True))
             
