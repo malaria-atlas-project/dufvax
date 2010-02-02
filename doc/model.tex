@@ -1,26 +1,5 @@
-\documentclass[a4paper]{article}
-\usepackage{fullpage}
-\usepackage{epsfig}
-\usepackage{pdfsync} 
-\usepackage{amsfonts}
-\usepackage{amsmath} 
-\usepackage{garamond}
-\usepackage[colorlinks]{hyperref}
-\usepackage[T1]{fontenc} 
-\begin{document}
-
-\garamond
-\title{Methods SI for duffy paper}
-\author{Anand Patil}
-\maketitle
-
-\section{License} % (fold)
-\label{sec:license}
-This document is licensed under the Creative Commons attribution share-alike license, see \texttt{LICENSE} in the root directory. Copyright \copyright\ 2009 Anand Patil
-% section license (end)
-
-\section{Statistical analysis} 
-\subsection{Random fields}
+ 
+\subsection*{Duffy model}
 The model targets two spatially-varying allele frequencies, the frequency of the Fyb mutation and the frequency of the silencing mutation in the promoter region within Fyb individuals. These are denoted $p_{ab}(x)$ and $p_0(x)$ respectively, where $x$ is a location. A third allele frequency, the frequency of the silencing mutation within Fya individuals, is modeled as a small constant denoted $p_1$. The model for these allele frequencies is as follows:
 \begin{eqnarray*}
     m_{ab} \sim \textup{Normal}(0,10000) \\
@@ -54,7 +33,7 @@ Both fields use the Mat\`ern covariance function [cite Banerjee]. The range para
 
 The Gaussian random fields are converted to probabilities using the standard inverse logit link function.
 
-\subsection{Likelihood} % (fold)
+\subsection*{Likelihood} % (fold)
 \label{sec:likelihood}
 
 The a/b switch mutation happens with probability $P(b=1)=p_{ab}(x)$, which should be much higher for $x$ in Africa. Given that $b=1$, the silencing mutation in the promoter region happens with probability $p_0(x)$. Given that $b=0$, the silencing mutation happens with probability $p_1$, which is assumed to be a small, constant value. Hardy-Weinberg assumptions apply to the genotype frequencies.
@@ -97,10 +76,26 @@ The a/b switch mutation happens with probability $P(b=1)=p_{ab}(x)$, which shoul
 
 The sampling distributions are assumed to be multinomial conditional on the appropriate individual phenotype or genotype probabilities described above. This likelihood completes the Bayesian probability model.
 
-\subsection{Implementation} 
-The model was implemented in the \href{www.python.org}{Python} programming language. The code is available from \href{github.com/malaria-atlas-project/ibd-world}{MAP's code repository}. It was fitted with the Markov chain Monte Carlo algorithm [cite Gilks] using the open-source Bayesian analysis package \href{code.google.com/p/pymc}{PyMC}. Dynamic traces [cite Gilks] are available upon request.
+\subsection*{Vivax model} 
+Assuming that Duffy negative individuals are refractory to infection by \emph{P. vivax}, the proportion of the population at risk of \emph{P. vivax} infection at location $x$ is $1-p_n(x)$, where the probability $p_n$ that any given individual is phenotypically Duffy negative is 
+\begin{eqnarray*}
+    p_n(x)=\left(p_{ab}(x)p_0(x)\right)^2+2p_{ab}(x)p_0(x)(1-p_{ab}(x))p_1+\left((1-p_{ab}(x))p_1\right)^2.
+\end{eqnarray*}
 
-Maps were generated using optimized Python code available from \href{github.com/malaria-atlas-project/generic-mbg}{MAP's code repository}.
+The \emph{P. vivax} endemicity within the population at risk can be modeled as a space-time random field as in \cite{hay2008}:
+\begin{eqnarray*}
+    m_v \sim \textup{Normal}(0,10000)\\
+    M_v(x) = m_v\\
+    \phi_v\sim\textup{Exponential}(.1)\\
+    \theta_v\sim\textup{Exponential}(.1)\\
+    \nu_v\sim\textup{Uniform}(0,3)\\
+    \rho_v\sim\ldots\\
+    \theta_t\sim\ldots\\
+    V_v\sim\textup{Exponential}(.1)\\
+    C(x_i,t_i;x_j,t_j)=\tau^2\gamma(0)\frac{(\Delta x)^{\gamma(\Delta t)}K_{\gamma(\Delta t)}(\Delta x)}{2^{\gamma(\Delta t)-1}\Gamma(\gamma(\Delta t)+1)},\\ \gamma(\Delta t) = \frac{1}{2\rho+2(1-\rho)\left[(1-\upsilon)e^{-|\Delta t|/\phi_t}+\upsilon\cos(2\pi \Delta t)\right]},\\ \Delta t = |t_i-t_j|
+    p_v(x)=\textup{logit}^{-1}(f_{v}(x))
+\end{eqnarray*} 
+A space-time process is more appropriate than a space-only process due to the seasonal and rapid secular changes seen in malaria transmission dynamics \cite{blah}. 
 
-
-\end{document}
+\subsection*{Implementation} 
+The model was implemented in the Python programming language \cite{python}. It was fitted with the Markov chain Monte Carlo algorithm \cite[Gilks] using the open-source Bayesian analysis package PyMC \cite{pymc}. Dynamic traces \cite[gilks] are available upon request.

@@ -84,7 +84,8 @@ def covariance_submodel(suffix, mesh, covariate_values, temporal=False):
                 
         @pm.deterministic(trace=True,name='C_%s'%suffix)
         def C(amp=amp,scale=scale,inc=inc,ecc=ecc,scale_t=scale_t, t_lim_corr=t_lim_corr, sin_frac=sin_frac):
-            return pm.gp.FullRankCovariance(my_st, amp=amp, scale=scale, inc=inc, ecc=ecc,st=scale_t, sd=.5,
+            eval_fun = CovarianceWithCovariates(my_st, mesh, covariate_values)
+            return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, inc=inc, ecc=ecc,st=scale_t, sd=diff_degree,
                                             tlc=t_lim_corr, sf = sin_frac)
 
     else:
