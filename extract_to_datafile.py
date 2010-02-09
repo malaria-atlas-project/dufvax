@@ -47,4 +47,4 @@ for fname in filter(lambda x: os.path.splitext(x)[1]=='.hdf5', os.listdir('.')):
     
 keys = cols.keys()
 data_out = np.rec.fromarrays([cols[k] for k in keys], names=keys)
-rec2csv(data_out, os.path.splitext(data_in)[0]+'_with_covariates.csv')
+rec2csv(data_out, os.path.splitext(sys.argv[1])[0]+'_with_covariates.csv')
