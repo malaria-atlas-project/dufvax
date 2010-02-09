@@ -261,7 +261,9 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
         # try:
         spatial_vars = zipmap(lambda k: covariance_submodel(k, logp_mesh_dict[k], covariate_value_dict[k], temporal_dict[k]), ['b','0','v'])
         sp_sub = zipmap(lambda k: spatial_vars[k]['sp_sub'], ['b','0','v'])
+        sp_sub_b, sp_sub_0, sp_sub_v = [sp_sub[k] for k in ['b','0','v']]
         V = zipmap(lambda k: spatial_vars[k]['V'], ['b','0','v'])
+        V_b, V_0, V_v = [V[k] for k in ['b','0','v']]
         tau = zipmap(lambda k: 1./spatial_vars[k]['V'], ['b','0','v'])
         
         # Loop over data clusters, adding nugget and applying link function.
@@ -379,8 +381,5 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
             
         if np.any(np.isnan(cur_obs)):
             raise ValueError
-            
-    from IPython.Debugger import Pdb
-    Pdb(color_scheme='LightBG').set_trace() 
 
     return locals()

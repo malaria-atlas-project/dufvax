@@ -66,13 +66,8 @@ def check_data(input):
         return (n==0)+np.isnan(n)
     testcol(ncheck,'n')
  
-f_labels = ['eps_p_fb', 'eps_p_f0', 'eps_p_fv']
-fs_have_nugget = {'eps_p_fb': True, 'eps_p_f0': True, 'eps_p_fv': True}
-nugget_labels = {'eps_p_fb': 'V_b', 'eps_p_f0': 'V_0', 'eps_p_fv': 'V_v'}
-M_labels = {'eps_p_fb': 'M_b', 'eps_p_f0': 'M_0', 'eps_p_fv': 'M_v'}
-C_labels = {'eps_p_fb': 'C_b', 'eps_p_f0': 'C_0', 'eps_p_fv': 'C_v'}
-x_labels = {'eps_p_fb': 'data_mesh', 'eps_p_f0': 'data_mesh', 'eps_p_fv': 'data_mesh'}
-diags_safe = {'eps_p_fb': True, 'eps_p_f0': True, 'eps_p_fv': True}
+nugget_labels = {'sp_sub_b': 'V_b', 'sp_sub_0': 'V_0', 'sp_sub_v': 'V_v'}
+obs_labels = {'sp_sub_b':'eps_p_fb','sp_sub_0':'eps_p_f0', 'sp_sub_v': 'eps_p_fv'}
 
 def phe0(eps_p_fb, eps_p_f0, eps_p_fv, p1):
     cmin, cmax = thread_partition_array(eps_p_fb)
@@ -98,7 +93,8 @@ def gen0(eps_p_fb, eps_p_f0, eps_p_fv):
     pm.map_noreturn(gen0_postproc, [(out, eps_p_f0, cmin[i], cmax[i]) for i in xrange(len(cmax))])
     return out
     
-map_postproc = [phe0, gena, genb, gen0]
+# map_postproc = [phe0, gena, genb, gen0]
+map_postproc = [gen0]
 
 def validate_postproc(**non_cov_columns):
     """
