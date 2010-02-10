@@ -21,7 +21,7 @@ lat_min_i, lat_max_i = ((np.array([lat_min, lat_max])+90.)/180.*modis_res[0]).as
 
 def subset_and_writeout(hf_in, fname, thin, maskval, binfn=lambda x:x):
     print 'Subsetting for %s'%fname
-    hf_out = tb.openFile(fname,'w')
+    hf_out = tb.openFile(fname.replace('-','_').replace('.','_')+'.hdf5','w')
     hf_out.createArray('/','lon',lon[lon_min_i:lon_max_i])
     hf_out.createArray('/','lat',lat[lat_min_i:lat_max_i])
     hf_out.createCArray('/','data',atom=tb.FloatAtom(),shape=(lat_max_i-lat_min_i,lon_max_i-lon_min_i),filters=tb.Filters(complevel=1,complib='zlib'))
@@ -41,18 +41,18 @@ def subset_and_writeout(hf_in, fname, thin, maskval, binfn=lambda x:x):
 
 for m in modis_covariates:
     hf = tb.openFile('/Volumes/data/MODIS-hdf5/%s.hdf5'%m)
-    subset_and_writeout(hf, '%s.hdf5'%m, 1, modis_missing)
+    subset_and_writeout(hf, '%s'%m, 1, modis_missing, lambda x:(x-x.min())/x.std())
     hf.close()
 
 glob = tb.openFile('/Volumes/data/Globcover/Globcover.hdf5')
 for c in glob_channels:
-    subset_and_writeout(glob, 'globcover-channel-%i.hdf5'%c, 3, glob_missing, lambda x:x==c)
+    subset_and_writeout(glob, 'globcover-channel-%i'%c, 3, glob_missing, lambda x:x==c)
 glob.close()
 
 # Reconcile the masks
 print 'Finding the conservative mask'
-el = tb.openFile('raw-data.elevation.geographic.world.version-5.hdf5')
-c11 = tb.openFile('globcover-channel-11.hdf5')
+el = tb.openFile('raw-data.elevation.geographic.world.version-5'.replace('-','_').replace('.','_')+'.hdf5')
+c11 = tb.openFile('globcover-channel-11'.replace('-','_').replace('.','_')+'.hdf5')
 conservative_mask = el.root.mask[:]+c11.root.mask[:]
 el.close()
 c11.close()

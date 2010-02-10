@@ -31,6 +31,15 @@ import warnings
 
 __all__ = ['make_model']
 
+class strip_time(object):
+    def __init__(self, f):
+        self.f = f
+    def __call__(self, x, y, *args, **kwds):
+        return self.f(x[:,:2],y[:,:2],*args,**kwds)
+    def diag_call(self, x, *args, **kwds):
+        return self.f.diag_call(x[:,:2],*args,**kwds)
+    
+
 def covariance_submodel(suffix, mesh, covariate_values, temporal=False):
     """
     A small function that creates the mean and covariance object
@@ -87,13 +96,12 @@ def covariance_submodel(suffix, mesh, covariate_values, temporal=False):
             eval_fun = CovarianceWithCovariates(my_st, mesh, covariate_values)
             return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, inc=inc, ecc=ecc,st=scale_t, sd=diff_degree,
                                             tlc=t_lim_corr, sf = sin_frac)
-
-
+                                            
     else:
         # Create the covariance & its evaluation at the data locations.
         @pm.deterministic(trace=True,name='C_%s'%suffix)
         def C(amp=amp, scale=scale, diff_degree=diff_degree):
-            eval_fun = CovarianceWithCovariates(pm.gp.matern.geo_rad, mesh, covariate_values)
+            eval_fun = CovarianceWithCovariates(strip_time(pm.gp.matern.geo_rad), mesh, covariate_values, fac=1e4)
             return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, diff_degree=diff_degree)
     
     # Create the mean function    
@@ -236,6 +244,8 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
     # Complication: Vivax can have multiple co-located observations at different times,
     # all corresponding to the same Duffy observation.
     duffy_data_mesh, duffy_logp_mesh, duffy_fi, duffy_ui, duffy_ti = uniquify(lon,lat)
+    duffy_data_mesh = np.hstack((duffy_data_mesh, np.atleast_2d(t).T))
+    duffy_logp_mesh = np.hstack((duffy_logp_mesh, np.atleast_2d(t[duffy_ui]).T))
     vivax_data_mesh, vivax_logp_mesh, vivax_fi, vivax_ui, vivax_ti = uniquify(lon[where_vivax],lat[where_vivax],t[where_vivax])
     
     
@@ -247,9 +257,9 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
     
     vivax_keys = set(covariate_values.keys())
     vivax_keys.remove('africa')
-
-    warnings.warn('Zeroing all covariates for testing purposes')
-    [covariate_values[k].fill(0) for k in covariate_values.iterkeys()]
+    
+    bigkeys = filter(lambda k: covariate_values[k].max()>10, covariate_values.keys())
+    
     vivax_covariate_values = dict([(k,covariate_values[k][vivax_ui]) for k in vivax_keys])
     logp_mesh_dict = {'b': duffy_logp_mesh, '0': duffy_logp_mesh, 'v': vivax_logp_mesh}
     temporal_dict = {'b': False, '0': False, 'v': True}

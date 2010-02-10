@@ -69,28 +69,28 @@ def check_data(input):
 nugget_labels = {'sp_sub_b': 'V_b', 'sp_sub_0': 'V_0', 'sp_sub_v': 'V_v'}
 obs_labels = {'sp_sub_b':'eps_p_fb','sp_sub_0':'eps_p_f0', 'sp_sub_v': 'eps_p_fv'}
 
-def phe0(eps_p_fb, eps_p_f0, eps_p_fv, p1):
-    cmin, cmax = thread_partition_array(eps_p_fb)
-    out = eps_p_fb.copy('F')     
-    pm.map_noreturn(phe0_postproc, [(out, eps_p_f0, p1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
+def phe0(sp_sub_b, sp_sub_0, sp_sub_v, p1):
+    cmin, cmax = thread_partition_array(sp_sub_b)
+    out = sp_sub_b.copy('F')     
+    pm.map_noreturn(phe0_postproc, [(out, sp_sub_0, p1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
     return out
 
-def gena(eps_p_fb, eps_p_f0, eps_p_fv, p1):
-    cmin, cmax = thread_partition_array(eps_p_fb)        
-    out = eps_p_fb.copy('F')         
-    pm.map_noreturn(gena_postproc, [(out, eps_p_f0, p1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
+def gena(sp_sub_b, sp_sub_0, sp_sub_v, p1):
+    cmin, cmax = thread_partition_array(sp_sub_b)        
+    out = sp_sub_b.copy('F')         
+    pm.map_noreturn(gena_postproc, [(out, sp_sub_0, p1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
     return out
     
-def genb(eps_p_fb, eps_p_f0, eps_p_fv):
-    cmin, cmax = thread_partition_array(eps_p_fb)        
-    out = eps_p_fb.copy('F')         
-    pm.map_noreturn(genb_postproc, [(out, eps_p_f0, cmin[i], cmax[i]) for i in xrange(len(cmax))])
+def genb(sp_sub_b, sp_sub_0, sp_sub_v):
+    cmin, cmax = thread_partition_array(sp_sub_b)        
+    out = sp_sub_b.copy('F')         
+    pm.map_noreturn(genb_postproc, [(out, sp_sub_0, cmin[i], cmax[i]) for i in xrange(len(cmax))])
     return out
     
-def gen0(eps_p_fb, eps_p_f0, eps_p_fv):
-    cmin, cmax = thread_partition_array(eps_p_fb)        
-    out = eps_p_fb.copy('F')         
-    pm.map_noreturn(gen0_postproc, [(out, eps_p_f0, cmin[i], cmax[i]) for i in xrange(len(cmax))])
+def gen0(sp_sub_b, sp_sub_0, sp_sub_v):
+    cmin, cmax = thread_partition_array(sp_sub_b)        
+    out = sp_sub_b.copy('F')         
+    pm.map_noreturn(gen0_postproc, [(out, sp_sub_0, cmin[i], cmax[i]) for i in xrange(len(cmax))])
     return out
     
 # map_postproc = [phe0, gena, genb, gen0]
