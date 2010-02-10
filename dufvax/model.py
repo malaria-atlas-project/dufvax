@@ -290,7 +290,7 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
         
     # Duffy eps_p_f's and p's, eval'ed everywhere.
     for k in ['b','0']:    
-        for i in xrange(np.ceil(len(n)/float(grainsize))):
+        for i in xrange(int(np.ceil(len(n)/float(grainsize)))):
             sl = slice(i*grainsize,(i+1)*grainsize,None)                
             if sl.stop>sl.start:
             
@@ -306,7 +306,7 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
         eps_p_f[k] = pm.Lambda('eps_p_f%s'%k, lambda eps_p_f_d=eps_p_f_d[k]: np.hstack(eps_p_f_d))
         
     # Vivax eps_p_f's and p's, only eval'ed on vivax points.
-    for i in xrange(np.ceil(len(n[where_vivax])/float(grainsize))):
+    for i in xrange(int(np.ceil(len(n[where_vivax])/float(grainsize)))):
         sl = slice(i*grainsize,(i+1)*grainsize,None)                
         if sl.stop>sl.start:
         
