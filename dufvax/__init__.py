@@ -2,6 +2,20 @@
 disttol = 5./6378.
 ttol = 1./12
 
+import tables as tb
+import numpy as np
+a_pred = a_pred = np.hstack((np.arange(15), np.arange(15,75,5), [100]))
+age_pr_file = tb.openFile('pr-vivax')
+age_dist_file = tb.openFile('age-dist-vivax')
+
+age_pr_trace = age_pr_file.root.chain0.PyMCsamples.cols
+age_dist_trace = age_dist_file.root.chain0.PyMCsamples.cols
+P_trace = age_pr_trace.P_pred[:]
+S_trace = age_dist_trace.S_pred[:]
+F_trace = age_pr_trace.F_pred[:]
+age_pr_file.close()
+age_dist_file.close()
+
 from model import *
 from generic_mbg import FieldStepper
 from pymc import thread_partition_array
@@ -9,7 +23,6 @@ from pymc.gp import GPEvaluationGibbs
 import dufvax
 from postproc_utils import *
 import pymc as pm
-import numpy as np
 import os
 root = os.path.split(dufvax.__file__)[0]
 pm.gp.cov_funs.cov_utils.mod_search_path.append(root)

@@ -28,6 +28,8 @@ from generic_mbg import *
 from st_cov_fun import *
 import generic_mbg
 import warnings
+from agecorr import age_corr_likelihoods
+from dufvax import P_trace, S_trace, F_trace, a_pred
 
 __all__ = ['make_model']
 
@@ -323,6 +325,11 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
 
     # The likelihoods.
     data_d = []    
+    
+    junk, splreps = age_corr_likelihoods(lo_age[where_vivax], up_age[where_vivax], vivax_pos[where_vivax], vivax_neg[where_vivax], 10000, np.arange(.01,1.,.01), a_pred, P_trace, S_trace, F_trace)
+    for i in xrange(len(splreps)):
+        splreps[i] = list(splreps[i])
+    
     for i in xrange(len(n)):
 
         sl_ind = int(i/grainsize)
@@ -384,10 +391,17 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
             pv = p_d['v'][sl_ind_vivax][sub_ind_vivax]
             
             cur_obs = np.array([vivax_pos[i], vivax_neg[i]])
-            n = np.sum(cur_obs)
+            
             pphe0 = pm.Lambda('pphe0_%i'%i, lambda pb=pb, p0=p0, p1=p1: (g_freqs['00'](pb,p0,p1)+g_freqs['01'](pb,p0,p1)+g_freqs['11'](pb,p0,p1)), trace=False)
             p = pm.Lambda('p_%i'%i, lambda pphe0=pphe0, pv=pv: pv*(1-pphe0), trace=False)
-            data_d.append(pm.Binomial('data_%i'%i, p=p, n=n, value=vivax_pos[i], observed=True))
+            try:
+                @pm.observed
+                @pm.stochastic(name='data_%i'%i,dtype=np.int)
+                def d_now(value = vivax_pos[i], splrep = splreps[i_vivax], p = p):
+                    out = interp.splev(p, splrep)
+            except ValueError:
+                raise ValueError, 'Log-likelihood is nan at chunk %i'%i
+            data_d.append(d_now)
             
         if np.any(np.isnan(cur_obs)):
             raise ValueError
