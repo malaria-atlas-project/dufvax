@@ -4,6 +4,7 @@ ttol = 1./12
 
 import tables as tb
 import numpy as np
+import age_correction
 a_pred = a_pred = np.hstack((np.arange(15), np.arange(15,75,5), [100]))
 age_pr_file = tb.openFile('pr-vivax')
 age_dist_file = tb.openFile('age-dist-vivax')
@@ -15,6 +16,8 @@ S_trace = age_dist_trace.S_pred[:]
 F_trace = age_pr_trace.F_pred[:]
 age_pr_file.close()
 age_dist_file.close()
+
+two_ten_factors = age_correction.two_ten_factors(10000, P_trace, S_trace, F_trace)
 
 from model import *
 from generic_mbg import FieldStepper
@@ -106,8 +109,16 @@ def gen0(sp_sub_b, sp_sub_0, sp_sub_v):
     pm.map_noreturn(gen0_postproc, [(out, sp_sub_0, cmin[i], cmax[i]) for i in xrange(len(cmax))])
     return out
     
-# map_postproc = [phe0, gena, genb, gen0]
-map_postproc = [gen0]
+def vivax(sp_sub_b, sp_sub_0, sp_sub_v):
+    cmin, cmax = thread_partition_array(sp_sub_b)
+    out = sp_sub_b.copy('F')     
+    ttf = two_ten_factors[np.random.randint(len(two_ten_factors))]
+    pm.map_noreturn(vivax_postproc, [(out, sp_sub_0, sp_sub_v, p1, ttf, cmin[i], cmax[i]) for i in xrange(len(cmax))])
+    return out
+    
+    
+map_postproc = [phe0, gena, genb, gen0, vivax]
+# map_postproc = [gen0]
 
 def validate_postproc(**non_cov_columns):
     """
