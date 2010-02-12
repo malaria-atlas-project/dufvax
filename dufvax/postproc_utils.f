@@ -136,7 +136,7 @@ cf2py integer intent(in), optional :: cmax = -1
 cf2py intent(hide) nx
 cf2py threadsafe
 
-      DOUBLE PRECISION fb(nx), f0(nx), fv(nx), p1, pb, p0, ttf
+      DOUBLE PRECISION fb(nx), f0(nx), fv(nx), p1, pb, p0, pv, ttf
       INTEGER nx, i, cmin, cmax
 
       EXTERNAL DSCAL
@@ -149,8 +149,9 @@ cf2py threadsafe
         do i=cmin+1,cmax
             pb = 1.0D0 / (1.0D0 + dexp(-fb(i)))
             p0 = 1.0D0 / (1.0D0 + dexp(-f0(i)))
+            pv = 1.0D0 / (1.0D0 + dexp(-fv(i)))
             pb = (pb*p0 + (1-pb)*p1)
-            fb(i) = pb*pb*fv(i)*ttf
+            fb(i) = pb*pb*pv*ttf
         end do
 
 
