@@ -5,19 +5,29 @@ ttol = 1./12
 import tables as tb
 import numpy as np
 import agecorr
+
+modis_covariates = ['raw_data_elevation_geographic_world_version_5','daytime_land_temp_annual_amplitude_geographic_world_2001_to_2006','daytime_land_temp_triannual_amplitude_geographic_world_2001_to_2006','daytime_land_temp_biannual_amplitude_geographic_world_2001_to_2006']
+glob_channels = [11,14,20,30,40,60,110,120,130,140,150,160,170,180,200]
+cmph_covariates = ['CMPH50A%i'%i for i in range(4)]
+covariate_names = modis_covariates + map(lambda n: 'globcover_channel_%i'%n, glob_channels) + cmph_covariates
+
 a_pred = a_pred = np.hstack((np.arange(15), np.arange(15,75,5), [100]))
-age_pr_file = tb.openFile('pr-vivax')
-age_dist_file = tb.openFile('age-dist-vivax')
+try:
+    age_pr_file = tb.openFile('pr-vivax')
+    age_dist_file = tb.openFile('age-dist-vivax')
 
-age_pr_trace = age_pr_file.root.chain0.PyMCsamples.cols
-age_dist_trace = age_dist_file.root.chain0.PyMCsamples.cols
-P_trace = age_pr_trace.P_pred[:]
-S_trace = age_dist_trace.S_pred[:]
-F_trace = age_pr_trace.F_pred[:]
-age_pr_file.close()
-age_dist_file.close()
+    age_pr_trace = age_pr_file.root.chain0.PyMCsamples.cols
+    age_dist_trace = age_dist_file.root.chain0.PyMCsamples.cols
+    P_trace = age_pr_trace.P_pred[:]
+    S_trace = age_dist_trace.S_pred[:]
+    F_trace = age_pr_trace.F_pred[:]
+    age_pr_file.close()
+    age_dist_file.close()
 
-two_ten_factors = agecorr.two_ten_factors(10000, P_trace, S_trace, F_trace)
+    two_ten_factors = agecorr.two_ten_factors(10000, P_trace, S_trace, F_trace)
+except IOError:
+    print 'Could not open age-pr files'
+    P_trace, S_trace, F_trace = [None]*3
 
 from model import *
 from generic_mbg import FieldStepper
@@ -109,12 +119,13 @@ def gen0(sp_sub_b, sp_sub_0, sp_sub_v):
     pm.map_noreturn(gen0_postproc, [(out, sp_sub_0, cmin[i], cmax[i]) for i in xrange(len(cmax))])
     return out
     
-def vivax(sp_sub_b, sp_sub_0, sp_sub_v):
+def vivax(sp_sub_b, sp_sub_0, sp_sub_v, p1):
     cmin, cmax = thread_partition_array(sp_sub_b)
     out = sp_sub_b.copy('F')     
-    ttf = two_ten_factors[np.random.randint(len(two_ten_factors))]
-    # pm.map_noreturn(vivax_postproc, [(out, sp_sub_0, sp_sub_v, p1, ttf, cmin[i], cmax[i]) for i in xrange(len(cmax))])
-    pm.map_noreturn(vivax_postproc, [(out, sp_sub_0, sp_sub_v, p1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
+    # ttf = two_ten_factors[np.random.randint(len(two_ten_factors))]
+    ttf = 1
+    pm.map_noreturn(vivax_postproc, [(out, sp_sub_0, sp_sub_v, p1, ttf, cmin[i], cmax[i]) for i in xrange(len(cmax))])
+    # pm.map_noreturn(vivax_postproc, [(out, sp_sub_0, sp_sub_v, p1, 1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
     return out
     
     

@@ -259,16 +259,26 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
     p1 = pm.Uniform('p1', 0, .04, value=.01)
     
     vivax_keys = set(covariate_values.keys())
-    vivax_keys.remove('africa')
     
     bigkeys = filter(lambda k: covariate_values[k].max()>10, covariate_values.keys())
     
     vivax_covariate_values = dict([(k,covariate_values[k][vivax_ui]) for k in vivax_keys])
     logp_mesh_dict = {'b': duffy_logp_mesh, '0': duffy_logp_mesh, 'v': vivax_logp_mesh}
     temporal_dict = {'b': False, '0': False, 'v': True}
-    covariate_value_dict = {'b': {'africa': covariate_values['africa'][duffy_ui]},
+    covariate_value_dict = {'b': {'globcover_channel_200': covariate_values['globcover_channel_200'][duffy_ui]},
                             '0': {},
                             'v': vivax_covariate_values}
+    
+    for k,v in covariate_value_dict.iteritems():
+        if k.find('channel')>-1:
+            print 'Hi!'
+            values = set(v)
+            print values
+            nmin = np.inf
+            for value in values:
+                nmin = min(np.sum(v==value),nmin)
+            if nmin < 100:
+                warnings.warn('Not good representation for covariate %s'%key)
     
     while not init_OK:
         # try:
@@ -327,9 +337,11 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
     # The likelihoods.
     data_d = []    
     
-    junk, splreps = age_corr_likelihoods(lo_age[where_vivax], up_age[where_vivax], vivax_pos[where_vivax], vivax_neg[where_vivax], 10000, np.arange(.01,1.,.01), a_pred, P_trace, S_trace, F_trace)
-    for i in xrange(len(splreps)):
-        splreps[i] = list(splreps[i])
+    warnings.warn('Not using age correction')
+    # junk, splreps = age_corr_likelihoods(lo_age[where_vivax], up_age[where_vivax], vivax_pos[where_vivax], vivax_neg[where_vivax], 10000, np.arange(.01,1.,.01), a_pred, P_trace, S_trace, F_trace)
+    # for i in xrange(len(splreps)):
+    #     splreps[i] = list(splreps[i])
+    splreps = [None]*len(where_vivax[0])
     
     for i in xrange(len(n)):
 
@@ -396,10 +408,12 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
             pphe0 = pm.Lambda('pphe0_%i'%i, lambda pb=pb, p0=p0, p1=p1: (g_freqs['00'](pb,p0,p1)+g_freqs['01'](pb,p0,p1)+g_freqs['11'](pb,p0,p1)), trace=False)
             p = pm.Lambda('p_%i'%i, lambda pphe0=pphe0, pv=pv: pv*(1-pphe0), trace=False)
             try:
+                warnings.warn('Not using age correction')
                 @pm.observed
                 @pm.stochastic(name='data_%i'%i,dtype=np.int)
-                def d_now(value = vivax_pos[i], splrep = splreps[i_vivax], p = p):
-                    out = interp.splev(p, splrep)
+                def d_now(value = vivax_pos[i], splrep = splreps[i_vivax], p = p, n = np.sum(cur_obs)):
+                    return pm.binomial_like(x=value, n=n, p=p)
+                    # return interp.splev(p, splrep)
             except ValueError:
                 raise ValueError, 'Log-likelihood is nan at chunk %i'%i
             data_d.append(d_now)
