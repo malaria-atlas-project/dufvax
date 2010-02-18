@@ -40,8 +40,7 @@ class strip_time(object):
     def __call__(self, x, y, *args, **kwds):
         return self.f(x[:,:2],y[:,:2],*args,**kwds)
     def diag_call(self, x, *args, **kwds):
-        return self.f.diag_call(x[:,:2],*args,**kwds)
-    
+        return self.f.diag_call(x[:,:2],*args,**kwds) 
 
 def covariance_submodel(suffix, mesh, covariate_values, temporal=False):
     """
@@ -93,12 +92,23 @@ def covariance_submodel(suffix, mesh, covariate_values, temporal=False):
                 return -np.Inf
             else:
                 return 0.
+        
+        covariate_names = covariate_values.keys()
+        @pm.stochastic(name='log_covfacs_%s'%suffix)
+        def log_covfacs(value=-np.ones(len(covariate_names))):
+            if np.all(value<0):
+                return 0
+            else:
+                return -np.inf
+                
+        covfacs = pm.Lambda('covfacs_%s'%suffix, lambda x=log_covfacs: np.exp(x))
                 
         @pm.deterministic(trace=True,name='C_%s'%suffix)
-        def C(amp=amp,scale=scale,inc=inc,ecc=ecc,scale_t=scale_t, t_lim_corr=t_lim_corr, sin_frac=sin_frac, diff_degree=diff_degree):
-            eval_fun = CovarianceWithCovariates(my_st, mesh, covariate_values)
-            return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, inc=inc, ecc=ecc,st=scale_t, sd=diff_degree,
-                                            tlc=t_lim_corr, sf = sin_frac)
+        def C(amp=amp,scale=scale,inc=inc,ecc=ecc,scale_t=scale_t, t_lim_corr=t_lim_corr, sin_frac=sin_frac, diff_degree=diff_degree, covfacs=covfacs):
+            facdict = dict([(k,1.e2*covfacs[i]) for i,k in enumerate(covariate_names)])
+            facdict['m'] = 1.e6
+            eval_fun = CovarianceWithCovariates(my_st, mesh, covariate_values, fac=facdict)
+            return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, inc=inc, ecc=ecc,st=scale_t, sd=diff_degree, tlc=t_lim_corr, sf = sin_frac)
                                             
     else:
         # Create the covariance & its evaluation at the data locations.
