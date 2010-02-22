@@ -97,10 +97,11 @@ def covariance_submodel(suffix, mesh, covariate_values, temporal=False):
         @pm.stochastic(name='log_covfacs_%s'%suffix)
         def log_covfacs(value=-np.ones(len(covariate_names))):
             if np.all(value<0):
-                return 0
+                return np.sum(value)
             else:
                 return -np.inf
-                
+        
+        # covfacs are uniformly distributed on [0,1]        
         covfacs = pm.Lambda('covfacs_%s'%suffix, lambda x=log_covfacs: np.exp(x))
                 
         @pm.deterministic(trace=True,name='C_%s'%suffix)
