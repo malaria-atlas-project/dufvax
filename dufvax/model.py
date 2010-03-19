@@ -64,7 +64,7 @@ def covariance_submodel(suffix, mesh, covariate_values, temporal=False):
     diff_degree = pm.Uniform('diff_degree_%s'%suffix, .5, 3, value=.5)
     
     # The nugget variance. Lower-bounded to preserve mixing.
-    V = pm.Exponential('V_%s'%suffix, .1, value=1.)
+    V = pm.Exponential('V_%s'%suffix, 10., value=1.)
     
     @pm.potential
     def V_bound(V=V):
@@ -96,8 +96,8 @@ def covariance_submodel(suffix, mesh, covariate_values, temporal=False):
         covfac_pow = pm.Exponential('covfac_pow_%s'%suffix, .1, value=.5)
         
         covariate_names = covariate_values.keys()
-        @pm.stochastic(name='log_covfacs_%s'%suffix)
-        def log_covfacs(value=-np.ones(len(covariate_names)), k=covfac_pow):
+        @pm.stochastic(name='log_covfacs_%s'%suffix, observed=True)
+        def log_covfacs(value=-np.ones(len(covariate_names))*.01, k=covfac_pow):
             """Induced prior on covfacs is p(x)=(1+k)(1-x)^k, x\in [0,1]"""
             if np.all(value<0):
                 return np.sum(value+np.log(1+k)+k*np.log(1-np.exp(value)))
@@ -128,7 +128,10 @@ def covariance_submodel(suffix, mesh, covariate_values, temporal=False):
     
     # Create the GP submodel    
     sp_sub = pm.gp.GPSubmodel('sp_sub_%s'%suffix,M,C,mesh)
-
+    sp_sub.f.trace=False
+    sp_sub.M.trace=False
+    sp_sub.C.trace=False
+    # sp_sub.f_eval.trace=False1
     sp_sub.f_eval.value = sp_sub.f_eval.value - sp_sub.f_eval.value.mean()    
     
     return locals()

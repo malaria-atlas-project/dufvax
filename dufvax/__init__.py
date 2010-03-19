@@ -148,6 +148,12 @@ def mcmc_init(M):
         for epf in M.eps_p_f_d[k]:
             M.use_step_method(pm.AdaptiveMetropolis, epf)
             
+    M.assign_step_methods()
+    for sm in M.step_method_dict.itervalues():
+        for smm in sm:
+            smm._tuning_info=[]
+            smm._state = []
+            
 
 non_cov_columns = { 'n': 'int',
                     'datatype': 'str',
