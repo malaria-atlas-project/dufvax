@@ -24,12 +24,10 @@ import warnings
 duffy_datafile, vivax_datafile = sys.argv[1:]
 combined_datafile = duffy_datafile.split('.')[0]+'_+_'+vivax_datafile.split('.')[0]+'.csv'
 
-duffy_data = csv2rec(duffy_datafile)
 vivax_data = csv2rec(vivax_datafile)
-n_duffy = len(duffy_data)
 n_vivax = len(vivax_data)
+n_duffy = 0
 
-duffy_nan = np.repeat(np.nan,n_duffy)
 vivax_nan = np.repeat(np.nan,n_vivax)
 
 tstart = vivax_data.yestart + (vivax_data.mostart-1)/12.
@@ -42,19 +40,19 @@ duffycols = ['genaa','genab','genbb','gen00','gena0','genb0','gena1','genb1','ge
             'bphe0']
 
 coldict = {}
-coldict['t'] = np.concatenate((duffy_nan,(tstart+tend)/2.))
-coldict['lon'] = np.concatenate((duffy_data.lon, vivax_data.lon))
-coldict['lat'] = np.concatenate((duffy_data.lat, vivax_data.lat))
-coldict['n'] = np.concatenate((duffy_data.n, vivax_data.pos+vivax_data.neg))
-coldict['vivax_pos'] = np.concatenate((duffy_nan,vivax_data.pos))
-coldict['vivax_neg'] = np.concatenate((duffy_nan,vivax_data.neg))
-coldict['datatype'] = np.concatenate((duffy_data.datatype, np.repeat('vivax',n_vivax)))
+coldict['t'] = (tstart+tend)/2.
+coldict['lon'] = vivax_data.lon
+coldict['lat'] = vivax_data.lat
+coldict['n'] = vivax_data.pos+vivax_data.neg
+coldict['vivax_pos'] = vivax_data.pos
+coldict['vivax_neg'] = vivax_data.neg
+coldict['datatype'] = np.repeat('vivax',n_vivax)
 
 for colname in vivaxcols:
-    coldict[colname] = np.concatenate((duffy_nan, vivax_data[colname]))
+    coldict[colname] = vivax_data[colname]
     
 for colname in duffycols:
-    coldict[colname] = np.concatenate((duffy_data[colname], vivax_nan))
+    coldict[colname] = vivax_nan
 
 allcols = coldict.keys()
 combined_data = np.rec.fromarrays([coldict[col] for col in allcols], names=allcols)
