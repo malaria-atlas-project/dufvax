@@ -141,12 +141,11 @@ def validate_postproc(**non_cov_columns):
 metadata_keys = ['disttol','ttol']
 
 def mcmc_init(M):
-    for k in ['b','0','v']:
-        M.use_step_method(GPEvaluationGibbs, M.sp_sub[k], M.V[k], M.eps_p_f[k])
+
+    M.use_step_method(GPEvaluationGibbs, M.sp_sub, M.V, M.eps_p_f)
     
-    for k in ['b','0','v']:
-        for epf in M.eps_p_f_d[k]:
-            M.use_step_method(pm.AdaptiveMetropolis, epf)
+    for epf in M.eps_p_f_d:
+        M.use_step_method(pm.AdaptiveMetropolis, epf)
             
     M.assign_step_methods()
     for sm in M.step_method_dict.itervalues():

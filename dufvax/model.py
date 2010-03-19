@@ -251,7 +251,6 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
     # Step method granularity    
     grainsize = 20
     
-    where_vivax = np.where(datatype=='vivax')
     from dufvax import disttol, ttol
     
     
@@ -263,10 +262,7 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
     # Vivax only needs to be modelled where Vivax is observed.
     # Complication: Vivax can have multiple co-located observations at different times,
     # all corresponding to the same Duffy observation.
-    duffy_data_mesh, duffy_logp_mesh, duffy_fi, duffy_ui, duffy_ti = uniquify(lon,lat)
-    duffy_data_mesh = np.hstack((duffy_data_mesh, np.atleast_2d(t).T))
-    duffy_logp_mesh = np.hstack((duffy_logp_mesh, np.atleast_2d(t[duffy_ui]).T))
-    vivax_data_mesh, vivax_logp_mesh, vivax_fi, vivax_ui, vivax_ti = uniquify(lon[where_vivax],lat[where_vivax],t[where_vivax])
+    vivax_data_mesh, vivax_logp_mesh, vivax_fi, vivax_ui, vivax_ti = uniquify(lon,lat,t)
     
     
     # Create the mean & its evaluation at the data locations.
@@ -280,76 +276,40 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
     bigkeys = filter(lambda k: covariate_values[k].max()>10, covariate_values.keys())
     
     vivax_covariate_values = dict([(k,covariate_values[k][vivax_ui]) for k in vivax_keys])
-    logp_mesh_dict = {'b': duffy_logp_mesh, '0': duffy_logp_mesh, 'v': vivax_logp_mesh}
-    temporal_dict = {'b': False, '0': False, 'v': True}
-    covariate_value_dict = {'b': {'globcover_channel_200': covariate_values['globcover_channel_200'][duffy_ui]},
-                            '0': {},
-                            'v': vivax_covariate_values}
-    
-    for k,v in covariate_value_dict.iteritems():
-        if k.find('channel')>-1:
-            print 'Hi!'
-            values = set(v)
-            print values
-            nmin = np.inf
-            for value in values:
-                nmin = min(np.sum(v==value),nmin)
-            if nmin < 100:
-                warnings.warn('Not good representation for covariate %s'%key)
     
     while not init_OK:
         # try:
-        spatial_vars = zipmap(lambda k: covariance_submodel(k, logp_mesh_dict[k], covariate_value_dict[k], temporal_dict[k]), ['b','0','v'])
-        sp_sub = zipmap(lambda k: spatial_vars[k]['sp_sub'], ['b','0','v'])
-        sp_sub_b, sp_sub_0, sp_sub_v = [sp_sub[k] for k in ['b','0','v']]
-        V = zipmap(lambda k: spatial_vars[k]['V'], ['b','0','v'])
-        V_b, V_0, V_v = [V[k] for k in ['b','0','v']]
-        tau = zipmap(lambda k: 1./spatial_vars[k]['V'], ['b','0','v'])
+        spatial_vars = covariance_submodel('v', vivax_logp_mesh, vivax_covariate_values, True)
+        sp_sub = spatial_vars['sp_sub']
+        V = spatial_vars['V']
+        tau = 1./spatial_vars['V']
         
         # Loop over data clusters, adding nugget and applying link function.
-        f = zipmap(lambda k: spatial_vars[k]['sp_sub'].f_eval, ['b','0','v'])
+        f = spatial_vars['sp_sub'].f_eval
         init_OK = True
     # except pm.ZeroProbability, msg:
     #     print 'Trying again: %s'%msg
     #     init_OK = False
     #     gc.collect()        
 
-    eps_p_f_d = {'b':[], '0':[], 'v':[]}
-    p_d = {'b':[], '0': [], 'v': []}
-    eps_p_f = {}
-        
-    # Duffy eps_p_f's and p's, eval'ed everywhere.
-    for k in ['b','0']:    
-        for i in xrange(int(np.ceil(len(n)/float(grainsize)))):
-            sl = slice(i*grainsize,(i+1)*grainsize,None)                
-            if sl.stop>sl.start:
-            
-                this_f = f[k][duffy_fi[sl]]
-
-                # Nuggeted field in this cluster
-                eps_p_f_d[k].append(pm.Normal('eps_p_f%s_%i'%(k,i), this_f, tau[k], value=np.random.normal(size=np.shape(this_f.value)), trace=False))
-        
-                # The allele frequency
-                p_d[k].append(pm.Lambda('p%s_%i'%(k,i),lambda lt=eps_p_f_d[k][-1]: invlogit(np.atleast_1d(lt)),trace=False))
-
-        # The fields plus the nugget
-        eps_p_f[k] = pm.Lambda('eps_p_f%s'%k, lambda eps_p_f_d=eps_p_f_d[k]: np.hstack(eps_p_f_d))
+    eps_p_f_d = []
+    p_d = []
         
     # Vivax eps_p_f's and p's, only eval'ed on vivax points.
-    for i in xrange(int(np.ceil(len(n[where_vivax])/float(grainsize)))):
+    for i in xrange(int(np.ceil(len(n)/float(grainsize)))):
         sl = slice(i*grainsize,(i+1)*grainsize,None)                
         if sl.stop>sl.start:
         
-            this_f = f['v'][vivax_fi[sl]]
+            this_f = f[vivax_fi[sl]]
 
             # Nuggeted field in this cluster
-            eps_p_f_d['v'].append(pm.Normal('eps_p_fv_%i'%i, this_f, tau['v'], value=np.random.normal(size=np.shape(this_f.value)), trace=False))
+            eps_p_f_d.append(pm.Normal('eps_p_fv_%i'%i, this_f, tau, value=np.random.normal(size=np.shape(this_f.value)), trace=False))
     
             # The allele frequency
-            p_d['v'].append(pm.Lambda('p%s_%i'%(k,i),lambda lt=eps_p_f_d['v'][-1]: invlogit(np.atleast_1d(lt)),trace=False))
+            p_d.append(pm.Lambda('p%s_%i'%('v',i),lambda lt=eps_p_f_d[-1]: invlogit(np.atleast_1d(lt)),trace=False))
 
     # The fields plus the nugget
-    eps_p_f['v'] = pm.Lambda('eps_p_fv', lambda eps_p_f_d=eps_p_f_d['v']: np.hstack(eps_p_f_d))    
+    eps_p_f = pm.Lambda('eps_p_fv', lambda eps_p_f_d=eps_p_f_d: np.hstack(eps_p_f_d))    
 
     # The likelihoods.
     data_d = []    
@@ -358,72 +318,29 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
     # junk, splreps = age_corr_likelihoods(lo_age[where_vivax], up_age[where_vivax], vivax_pos[where_vivax], vivax_neg[where_vivax], 10000, np.arange(.01,1.,.01), a_pred, P_trace, S_trace, F_trace)
     # for i in xrange(len(splreps)):
     #     splreps[i] = list(splreps[i])
-    splreps = [None]*len(where_vivax[0])
+    splreps = [None]*len(vivax_pos)
     
     for i in xrange(len(n)):
 
         sl_ind = int(i/grainsize)
         sub_ind = i%grainsize
         
-        if sl_ind == len(p_d['b']):
+        if sl_ind == len(p_d):
             break
         
-        # See duffy/doc/model.tex for explanations of the likelihoods.
-        pb,p0 = map(lambda k: p_d[k][sl_ind][sub_ind], ['b','0'])
-        
-        if datatype[i]=='prom':
-            cur_obs = [prom0[i], promab[i]]
-            # Need to have either b and 0 or a and 1 on both chromosomes
-            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1: (pb*p0+(1-pb)*p1)**2, trace=False)
-            n = np.sum(cur_obs)
-            data_d.append(pm.Binomial('data_%i'%i, p=p, n=n, value=prom0[i], observed=True))
-            
-        elif datatype[i]=='aphe':
-            cur_obs = [aphea[i], aphe0[i]]
-            n = np.sum(cur_obs)
-            # Need to have (a and not 1) on either chromosome, or not (not (a and not 1) on both chromosomes)
-            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1: 1-(1-(1-pb)*(1-p1))**2, trace=False)
-            data_d.append(pm.Binomial('data_%i'%i, p=p, n=n, value=aphea[i], observed=True))
-            
-        elif datatype[i]=='bphe':
-            cur_obs = [bpheb[i], bphe0[i]]
-            n = np.sum(cur_obs)
-            # Need to have (b and not 0) on either chromosome
-            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1: 1-(1-pb*(1-p0))**2, trace=False)
-            data_d.append(pm.Binomial('data_%i'%i, p=p, n=n, value=aphea[i], observed=True))            
-            
-        elif datatype[i]=='phe':
-            cur_obs = np.array([pheab[i],phea[i],pheb[i],phe0[i]])
-            n = np.sum(cur_obs)
-            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1: np.array([\
-                g_freqs['ab'](pb,p0,p1),
-                g_freqs['a0'](pb,p0,p1)+g_freqs['a1'](pb,p0,p1)+g_freqs['aa'](pb,p0,p1),
-                g_freqs['b0'](pb,p0,p1)+g_freqs['b1'](pb,p0,p1)+g_freqs['bb'](pb,p0,p1),
-                g_freqs['00'](pb,p0,p1)+g_freqs['01'](pb,p0,p1)+g_freqs['11'](pb,p0,p1)]), trace=False)
-            np.testing.assert_almost_equal(p.value.sum(), 1)
-            data_d.append(pm.Multinomial('data_%i'%i, p=p, n=n, value=cur_obs, observed=True))
-            
-        elif datatype[i]=='gen':
-            cur_obs = np.array([genaa[i],genab[i],gena0[i],gena1[i],genbb[i],genb0[i],genb1[i],gen00[i],gen01[i],gen11[i]])
-            n = np.sum(cur_obs)
-            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1, g_freqs=g_freqs: \
-                np.array([g_freqs[key](pb,p0,p1) for key in ['aa','ab','a0','a1','bb','b0','b1','00','01','11']]), trace=False)
-            np.testing.assert_almost_equal(p.value.sum(), 1)
-            data_d.append(pm.Multinomial('data_%i'%i, p=p, n=n, value=cur_obs, observed=True))
-        
-        elif datatype[i]=='vivax':
+        if datatype[i]=='vivax':
             # Since the vivax 'p' uses a different indexing system,
             # figure out which element of vivax 'p' to grab to correspond
             # to the i'th row of the datafile.
-            i_vivax = np.where(where_vivax[0]==i)[0][0]
+            i_vivax = i
             sl_ind_vivax = int(i_vivax/grainsize)
             sub_ind_vivax = i_vivax%grainsize
-            pv = p_d['v'][sl_ind_vivax][sub_ind_vivax]
+            pv = p_d[sl_ind_vivax][sub_ind_vivax]
             
             cur_obs = np.array([vivax_pos[i], vivax_neg[i]])
             
-            pphe0 = pm.Lambda('pphe0_%i'%i, lambda pb=pb, p0=p0, p1=p1: (g_freqs['00'](pb,p0,p1)+g_freqs['01'](pb,p0,p1)+g_freqs['11'](pb,p0,p1)), trace=False)
-            p = pm.Lambda('p_%i'%i, lambda pphe0=pphe0, pv=pv: pv*(1-pphe0), trace=False)
+
+            p = pm.Lambda('p_%i'%i, lambda pv=pv: pv, trace=False)
             try:
                 warnings.warn('Not using age correction')
                 @pm.observed
@@ -434,6 +351,9 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
             except ValueError:
                 raise ValueError, 'Log-likelihood is nan at chunk %i'%i
             data_d.append(d_now)
+        
+        else:
+            raise ValueError, 'Non-vivax point encountered'
             
         if np.any(np.isnan(cur_obs)):
             raise ValueError
