@@ -22,7 +22,8 @@ lon = np.linspace(-180,180,modis_res[1])
 lat = np.linspace(-90,90,modis_res[0])
 # lon_min, lon_max, lat_min, lat_max = (-19, 52, 0, 24)
 # lon_min, lon_max, lat_min, lat_max = (-19, 52, 8, 37)
-lon_min, lon_max, lat_min, lat_max = (-19, 52, 5, 20)
+# lon_min, lon_max, lat_min, lat_max = (-19, 52, 5, 20)
+lon_min, lon_max, lat_min, lat_max = (-19, 13, 42, 40)
 
 # Subset the rasters
 lon_min_i, lon_max_i = ((np.array([lon_min, lon_max])+180.)/360.*modis_res[1]).astype('int')
