@@ -16,7 +16,7 @@ covariate_path = sys.argv[2]
 data_box = data_in[np.where((data_in.lon>=lon_min)*(data_in.lon<=lon_max)*(data_in.lat>=lat_min)*(data_in.lat<=lat_max))]
 
 cols = dict([(key,data_box[key]) for key in data_box.dtype.names])
-for k in ['urban','rural','africa']:
+for k in ['urban','rural']:
     cols.pop(k)
 
 def mode(a):
