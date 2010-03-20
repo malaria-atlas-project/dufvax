@@ -8,7 +8,8 @@ from dufvax import covariate_names
 
 # lon_min, lon_max, lat_min, lat_max = (-19, 52, 0, 24)
 # lon_min, lon_max, lat_min, lat_max = (-19, 52, 8, 37)
-lon_min, lon_max, lat_min, lat_max = (-19, 52, 5, 20)
+# lon_min, lon_max, lat_min, lat_max = (-19, 52, 5, 20)
+lon_min, lon_max, lat_min, lat_max = (-19, 13, 42, 40)
 
 data_in = csv2rec(sys.argv[1])
 covariate_path = sys.argv[2]
