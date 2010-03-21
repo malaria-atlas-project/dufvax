@@ -105,7 +105,7 @@ def vivax(sp_sub_v):
     return out
     
     
-map_postproc = [phe0, gena, genb, gen0, vivax]
+map_postproc = [vivax]
 # map_postproc = [gen0]
 
 def validate_postproc(**non_cov_columns):
