@@ -92,34 +92,10 @@ def check_data(input):
         return (n==0)+np.isnan(n)
     testcol(ncheck,'n')
  
-nugget_labels = {'sp_sub_b': 'V_b', 'sp_sub_0': 'V_0', 'sp_sub_v': 'V_v'}
-obs_labels = {'sp_sub_b':'eps_p_fb','sp_sub_0':'eps_p_f0', 'sp_sub_v': 'eps_p_fv'}
-
-def phe0(sp_sub_b, sp_sub_0, sp_sub_v, p1):
-    cmin, cmax = thread_partition_array(sp_sub_b)
-    out = sp_sub_b.copy('F')     
-    pm.map_noreturn(phe0_postproc, [(out, sp_sub_0, p1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
-    return out
-
-def gena(sp_sub_b, sp_sub_0, sp_sub_v, p1):
-    cmin, cmax = thread_partition_array(sp_sub_b)        
-    out = sp_sub_b.copy('F')         
-    pm.map_noreturn(gena_postproc, [(out, sp_sub_0, p1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
-    return out
+nugget_labels = {'sp_sub_v': 'V_v'}
+obs_labels = {'sp_sub_v': 'eps_p_fv'}
     
-def genb(sp_sub_b, sp_sub_0, sp_sub_v):
-    cmin, cmax = thread_partition_array(sp_sub_b)        
-    out = sp_sub_b.copy('F')         
-    pm.map_noreturn(genb_postproc, [(out, sp_sub_0, cmin[i], cmax[i]) for i in xrange(len(cmax))])
-    return out
-    
-def gen0(sp_sub_b, sp_sub_0, sp_sub_v):
-    cmin, cmax = thread_partition_array(sp_sub_b)        
-    out = sp_sub_b.copy('F')         
-    pm.map_noreturn(gen0_postproc, [(out, sp_sub_0, cmin[i], cmax[i]) for i in xrange(len(cmax))])
-    return out
-    
-def vivax(sp_sub_b, sp_sub_0, sp_sub_v, p1):
+def vivax(sp_sub_v):
     cmin, cmax = thread_partition_array(sp_sub_b)
     out = sp_sub_b.copy('F')     
     # ttf = two_ten_factors[np.random.randint(len(two_ten_factors))]
