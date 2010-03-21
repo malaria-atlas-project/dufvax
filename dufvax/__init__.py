@@ -92,10 +92,10 @@ def check_data(input):
         return (n==0)+np.isnan(n)
     testcol(ncheck,'n')
  
-nugget_labels = {'sp_sub_v': 'V_v'}
-obs_labels = {'sp_sub_v': 'eps_p_fv'}
+nugget_labels = {'sp_sub': 'V_v'}
+obs_labels = {'sp_sub': 'eps_p_fv'}
     
-def vivax(sp_sub_v):
+def vivax(sp_sub):
     cmin, cmax = thread_partition_array(sp_sub_b)
     out = sp_sub_b.copy('F')     
     # ttf = two_ten_factors[np.random.randint(len(two_ten_factors))]
