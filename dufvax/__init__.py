@@ -30,7 +30,7 @@ except IOError:
     P_trace, S_trace, F_trace = [None]*3
 
 from model import *
-from generic_mbg import FieldStepper
+from generic_mbg import FieldStepper, invlogit
 from pymc import thread_partition_array
 from pymc.gp import GPEvaluationGibbs
 import dufvax
@@ -95,14 +95,8 @@ def check_data(input):
 nugget_labels = {'sp_sub': 'V'}
 obs_labels = {'sp_sub': 'eps_p_f'}
     
-def vivax(sp_sub):
-    cmin, cmax = thread_partition_array(sp_sub_b)
-    out = sp_sub_b.copy('F')     
-    # ttf = two_ten_factors[np.random.randint(len(two_ten_factors))]
-    ttf = 1
-    pm.map_noreturn(vivax_postproc, [(out, sp_sub_0, sp_sub_v, p1, ttf, cmin[i], cmax[i]) for i in xrange(len(cmax))])
-    # pm.map_noreturn(vivax_postproc, [(out, sp_sub_0, sp_sub_v, p1, 1, cmin[i], cmax[i]) for i in xrange(len(cmax))])
-    return out
+def vivax(sp_sub_v):
+    return invlogit(sp_sub_v.copy())
     
     
 map_postproc = [vivax]
