@@ -92,8 +92,8 @@ def check_data(input):
         return (n==0)+np.isnan(n)
     testcol(ncheck,'n')
  
-nugget_labels = {'sp_sub': 'V_v'}
-obs_labels = {'sp_sub': 'eps_p_fv'}
+nugget_labels = {'sp_sub': 'V'}
+obs_labels = {'sp_sub': 'eps_p_f'}
     
 def vivax(sp_sub):
     cmin, cmax = thread_partition_array(sp_sub_b)
