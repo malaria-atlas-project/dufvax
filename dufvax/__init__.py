@@ -7,7 +7,8 @@ import numpy as np
 import agecorr
 
 modis_covariates = ['raw_data_elevation_geographic_world_version_5','daytime_land_temp_annual_amplitude_geographic_world_2001_to_2006','daytime_land_temp_triannual_amplitude_geographic_world_2001_to_2006','daytime_land_temp_biannual_amplitude_geographic_world_2001_to_2006']
-glob_channels = [11,14,20,30,40,60,110,120,130,140,150,160,170,180,200]
+# glob_channels = [11,14,20,30,40,60,110,120,130,140,150,160,170,180,200]
+glob_channels = [200]
 cmph_covariates = ['CMPH50A%i'%i for i in range(4)]
 covariate_names = modis_covariates + map(lambda n: 'globcover_channel_%i'%n, glob_channels) + cmph_covariates
 
