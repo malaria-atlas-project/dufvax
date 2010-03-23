@@ -263,10 +263,10 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
     # Vivax only needs to be modelled where Vivax is observed.
     # Complication: Vivax can have multiple co-located observations at different times,
     # all corresponding to the same Duffy observation.
-    duffy_data_mesh, duffy_logp_mesh, duffy_fi, duffy_ui, duffy_ti = uniquify(lon,lat)
+    duffy_data_mesh, duffy_logp_mesh, duffy_fi, duffy_ui, duffy_ti = uniquify_tol(disttol,ttol,lon,lat)
     duffy_data_mesh = np.hstack((duffy_data_mesh, np.atleast_2d(t).T))
     duffy_logp_mesh = np.hstack((duffy_logp_mesh, np.atleast_2d(t[duffy_ui]).T))
-    vivax_data_mesh, vivax_logp_mesh, vivax_fi, vivax_ui, vivax_ti = uniquify(lon[where_vivax],lat[where_vivax],t[where_vivax])
+    vivax_data_mesh, vivax_logp_mesh, vivax_fi, vivax_ui, vivax_ti = uniquify_tol(disttol,ttol,lon[where_vivax],lat[where_vivax],t[where_vivax])
     
     
     # Create the mean & its evaluation at the data locations.

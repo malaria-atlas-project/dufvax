@@ -6,11 +6,10 @@ from mpl_toolkits import basemap
 from dufvax import modis_covariates, glob_channels, cmph_covariates
 modis_covariates = ['raw-data.elevation.geographic.world.version-5', 'daytime-land-temp.annual-amplitude.geographic.world.2001-to-2006', 'daytime-land-temp.mean.geographic.world.2001-to-2006', 'daytime-land-temp.biannual-amplitude.geographic.world.2001-to-2006', 'daytime-land-temp.triannual-amplitude.geographic.world.2001-to-2006']
 
-for res in [1,2,5]:
-    try:
-        os.mkdir('%ik-covariates'%res)
-    except OSError:
-        pass
+try:
+    os.mkdir('5k-covariates')
+except OSError:
+    pass
 
 # Parameters
 
@@ -23,7 +22,10 @@ lat = np.linspace(-90,90,modis_res[0])
 # lon_min, lon_max, lat_min, lat_max = (-19, 52, 0, 24)
 # lon_min, lon_max, lat_min, lat_max = (-19, 52, 8, 37)
 # lon_min, lon_max, lat_min, lat_max = (-19, 52, 5, 20)
-lon_min, lon_max, lat_min, lat_max = (-19, 42, 13, 38)
+# lon_min, lon_max, lat_min, lat_max = (-19, 42, 13, 38)
+af_lon, af_lat, af_data, af_type = map_utils.import_raster('africa','.')
+lon_min, lon_max, lat_min, lat_max = af_lon.min(), af_lon.max(), af_lat.min(), af_lat.max()
+os.system('cp africa.asc 5k-covariates')
 
 # Subset the rasters
 lon_min_i, lon_max_i = ((np.array([lon_min, lon_max])+180.)/360.*modis_res[1]).astype('int')
@@ -31,29 +33,30 @@ lat_min_i, lat_max_i = ((np.array([lat_min, lat_max])+90.)/180.*modis_res[0]).as
 
 def subset_and_writeout(hf_in, fname, thin, maskval, binfn=lambda x:x):
     print 'Subsetting for %s'%fname
-    for res in [1,2,5]:
-        hf_out = tb.openFile(os.path.join('%ik-covariates'%res,fname.replace('-','_').replace('.','_')+'.hdf5'),'w')
-        hf_out.createArray('/','lon',lon[lon_min_i:lon_max_i:res])
-        hf_out.createArray('/','lat',lat[lat_min_i:lat_max_i:res])
-    
-        d = hf_in.root.data[(hf_in.root.data.shape[0]-lat_max_i*thin):\
-                            (hf_in.root.data.shape[0]-lat_min_i*thin):\
-                            thin, 
-                            lon_min_i*thin:\
-                            lon_max_i*thin:\
-                            thin]
-                            
-        d = map_utils.grid_convert(map_utils.grid_convert(d,'y-x+','x+y+')[::res,::res], 'x+y+','y-x+')
+    # for res in [1,2,5]:
+    res = 5
+    hf_out = tb.openFile(os.path.join('%ik-covariates'%res,fname.replace('-','_').replace('.','_')+'.hdf5'),'w')
+    hf_out.createArray('/','lon',lon[lon_min_i:lon_max_i:res])
+    hf_out.createArray('/','lat',lat[lat_min_i:lat_max_i:res])
 
-        hf_out.createCArray('/','data',atom=tb.FloatAtom(),shape=d.shape,filters=tb.Filters(complevel=1,complib='zlib'))
-        hf_out.createCArray('/','mask',atom=tb.BoolAtom(),shape=d.shape,filters=tb.Filters(complevel=1,complib='zlib'))
-        hf_out.root.data.attrs.view = 'y-x+'
+    d = hf_in.root.data[(hf_in.root.data.shape[0]-lat_max_i*thin):\
+                        (hf_in.root.data.shape[0]-lat_min_i*thin):\
+                        thin, 
+                        lon_min_i*thin:\
+                        lon_max_i*thin:\
+                        thin]
+                        
+    d = map_utils.grid_convert(map_utils.grid_convert(d,'y-x+','x+y+')[::res,::res], 'x+y+','y-x+')
+
+    hf_out.createCArray('/','data',atom=tb.FloatAtom(),shape=d.shape,filters=tb.Filters(complevel=1,complib='zlib'))
+    hf_out.createCArray('/','mask',atom=tb.BoolAtom(),shape=d.shape,filters=tb.Filters(complevel=1,complib='zlib'))
+    hf_out.root.data.attrs.view = 'y-x+'
 
 
-        hf_out.root.data[:]=binfn(d)
-        hf_out.root.mask[:]=d==maskval
+    hf_out.root.data[:]=binfn(d)
+    hf_out.root.mask[:]=d==maskval
 
-        hf_out.close()
+    hf_out.close()
 
 for m in modis_covariates:
     hf = tb.openFile('/Volumes/data/MODIS-hdf5/%s.hdf5'%m)
@@ -89,14 +92,16 @@ glob.close()
 
 # Reconcile the masks
 print 'Finding the conservative mask'
-for res in [1,2,5]:
-    el = tb.openFile(os.path.join('%ik-covariates'%res,'raw-data.elevation.geographic.world.version-5'.replace('-','_').replace('.','_')+'.hdf5'))
-    c11 = tb.openFile(os.path.join('%ik-covariates'%res,'globcover_channel_11'.replace('-','_').replace('.','_')+'.hdf5'))
-    conservative_mask = el.root.mask[:]+c11.root.mask[:]
-    el.close()
-    c11.close()
-    for fname in filter(lambda x: os.path.splitext(x)[1]=='.hdf5', os.listdir('%ik-covariates'%res)):
-        print 'Remasking %s'%(os.path.join('%ik-covariates'%res, fname))
-        hf = tb.openFile(os.path.join('%ik-covariates'%res, fname),'a')
-        hf.root.mask[:] = conservative_mask
-        hf.close()
+# for res in [1,2,5]:
+res = 5
+el = tb.openFile(os.path.join('%ik-covariates'%res,'raw-data.elevation.geographic.world.version-5'.replace('-','_').replace('.','_')+'.hdf5'))
+c11 = tb.openFile(os.path.join('%ik-covariates'%res,'globcover_channel_11'.replace('-','_').replace('.','_')+'.hdf5'))
+junk1, junk2, pete_mask, juncus = map_utils.import_raster('ls','.')
+conservative_mask = el.root.mask[:]+c11.root.mask[:]+pete_mask.mask[:]
+el.close()
+c11.close()
+for fname in filter(lambda x: os.path.splitext(x)[1]=='.hdf5', os.listdir('%ik-covariates'%res)):
+    print 'Remasking %s'%(os.path.join('%ik-covariates'%res, fname))
+    hf = tb.openFile(os.path.join('%ik-covariates'%res, fname),'a')
+    hf.root.mask[:] = conservative_mask
+    hf.close()
