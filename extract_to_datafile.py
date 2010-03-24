@@ -13,7 +13,7 @@ covariate_path = sys.argv[2]
 data_box = data_in
 
 cols = dict([(key,data_box[key]) for key in data_box.dtype.names])
-for k in ['urban','rural']:
+for k in ['urban','rural','africa']:
     cols.pop(k)
 
 def mode(a):
@@ -44,6 +44,8 @@ for fname in map(lambda n: n+'.hdf5', covariate_names):
     hf = tb.openFile(os.path.join(covariate_path,fname))
     
     cols[colname] = map_utils.interp_geodata(hf.root.lon[:],hf.root.lat[:],hf.root.data[:],cols['lon'],cols['lat'],hf.root.mask[:],order=0,nan_handler=nan_callback)
+    if np.any(np.isnan(cols[colname])):
+        raise ValueError
     
     hf.close()
     
