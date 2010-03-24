@@ -10,6 +10,7 @@ modis_covariates = ['raw_data_elevation_geographic_world_version_5','daytime_lan
 # glob_channels = [11,14,20,30,40,60,110,120,130,140,150,160,170,180,200]
 glob_channels = [190]
 cmph_covariates = ['CMPH50A%i'%i for i in range(4)]
+# cmph_covariates = []
 covariate_names = modis_covariates + map(lambda n: 'globcover_channel_%i'%n, glob_channels) + cmph_covariates+['africa']
 
 a_pred = a_pred = np.hstack((np.arange(15), np.arange(15,75,5), [100]))
