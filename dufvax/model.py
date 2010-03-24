@@ -281,7 +281,7 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
     vivax_covariate_values = dict([(k,covariate_values[k][vivax_ui]) for k in vivax_keys])
     logp_mesh_dict = {'b': duffy_logp_mesh, '0': duffy_logp_mesh, 'v': vivax_logp_mesh}
     temporal_dict = {'b': False, '0': False, 'v': True}
-    covariate_value_dict = {'b': {'globcover_channel_200': covariate_values['globcover_channel_200'][duffy_ui]},
+    covariate_value_dict = {'b': {'africa': covariate_values['africa'][duffy_ui]},
                             '0': {},
                             'v': vivax_covariate_values}
     
