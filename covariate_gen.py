@@ -71,37 +71,37 @@ def subset_and_writeout(hf_in, fname, thin, maskval, binfn=lambda x:x):
     hf_out.close()
 
 for m in modis_covariates:
-    hf = tb.openFile('/Volumes/data/MODIS-hdf5/%s.hdf5'%m)
+    hf = tb.openFile('%s.hdf5'%m)
     subset_and_writeout(hf, '%s'%m, 1, modis_missing, lambda x:(x-x.min())/x.std())
     hf.close()
 
-# for cmph in cmph_covariates:
-#     print 'Subsetting for %s'%cmph
-#     lon_,lat_,data = map_utils.CRU_extract('/Volumes/data/CMORPH','%s'%cmph, zip=False)
-#     lon_.sort()
-#     lat_.sort()
-#     # data = map_utils.interp_geodata(lon_, lat_, data, lon[lon_min_i:lon_max_i], lat[lon_min_i:lon_max_i])
-#     data = map_utils.grid_convert(basemap.interp(map_utils.grid_convert(data,'y-x+','y+x+'), lon_, lat_, *np.meshgrid(lon[lon_min_i:lon_max_i],lat[lat_min_i:lat_max_i])),'y+x+','x+y+')
-#     for res in [5]:
-#         hf_out = tb.openFile(os.path.join('%ik-covariates'%res,cmph.lower()+'.hdf5'),'w')
-#         hf_out.createArray('/','lon',lon[lon_min_i:lon_max_i][::res])
-#         hf_out.createArray('/','lat',lat[lat_min_i:lat_max_i][::res])
-#         
-#         d = map_utils.grid_convert(data[::res,::res], 'x+y+','y-x+')
-#         
-#         hf_out.createCArray('/','data',atom=tb.FloatAtom(),shape=d.shape,filters=tb.Filters(complevel=1,complib='zlib'))
-#         hf_out.createCArray('/','mask',atom=tb.BoolAtom(),shape=d.shape,filters=tb.Filters(complevel=1,complib='zlib'))
-#         hf_out.root.data.attrs.view = 'y-x+'
-#         
-#         hf_out.root.data[:]=d
-#         hf_out.root.mask[:] = clipped_pete_mask
-#         
-#         hf_out.close()
+for cmph in cmph_covariates:
+    print 'Subsetting for %s'%cmph
+    lon_,lat_,data = map_utils.CRU_extract('.','%s'%cmph, zip=False)
+    lon_.sort()
+    lat_.sort()
+    # data = map_utils.interp_geodata(lon_, lat_, data, lon[lon_min_i:lon_max_i], lat[lon_min_i:lon_max_i])
+    data = map_utils.grid_convert(basemap.interp(map_utils.grid_convert(data,'y-x+','y+x+'), lon_, lat_, *np.meshgrid(lon[lon_min_i:lon_max_i],lat[lat_min_i:lat_max_i])),'y+x+','x+y+')
+    for res in [5]:
+        hf_out = tb.openFile(os.path.join('%ik-covariates'%res,cmph.lower()+'.hdf5'),'w')
+        hf_out.createArray('/','lon',lon[lon_min_i:lon_max_i][::res])
+        hf_out.createArray('/','lat',lat[lat_min_i:lat_max_i][::res])
+        
+        d = map_utils.grid_convert(data[::res,::res], 'x+y+','y-x+')
+        
+        hf_out.createCArray('/','data',atom=tb.FloatAtom(),shape=d.shape,filters=tb.Filters(complevel=1,complib='zlib'))
+        hf_out.createCArray('/','mask',atom=tb.BoolAtom(),shape=d.shape,filters=tb.Filters(complevel=1,complib='zlib'))
+        hf_out.root.data.attrs.view = 'y-x+'
+        
+        hf_out.root.data[:]=d
+        hf_out.root.mask[:] = clipped_pete_mask
+        
+        hf_out.close()
 
-# glob = tb.openFile('/Volumes/data/Globcover/Globcover.hdf5')
-# for c in glob_channels:
-#     subset_and_writeout(glob, 'globcover-channel-%i'%c, 3, glob_missing, lambda x:x==c)
-# glob.close()
+glob = tb.openFile('Globcover.hdf5')
+for c in glob_channels:
+    subset_and_writeout(glob, 'globcover-channel-%i'%c, 3, glob_missing, lambda x:x==c)
+glob.close()
 
 # Reconcile the masks
 print 'Finding the conservative mask'
