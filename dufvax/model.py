@@ -165,7 +165,7 @@ def zipmap(f, keys):
     return dict(zip(keys, map(f, keys)))
 
 def uniquify_tol(disttol, ttol, *cols):
-    locs = [tuple([col[0] for col in cols])]
+    locs = [np.array([col[0] for col in cols])]
     fi = [0]
     ui = [0]
     dx = np.empty(1)
@@ -174,7 +174,7 @@ def uniquify_tol(disttol, ttol, *cols):
         # If repeat location, add observation
         loc = np.array([col[i] for col in cols])
         for j in xrange(len(locs)):
-            pm.gp.geo_rad(dx, np.atleast_2d(loc[:2]*np.pi/180.), np.atleast_2d(locs[j][:2]))
+            pm.gp.geo_rad(dx, np.atleast_2d(loc[:2]*np.pi/180.), np.atleast_2d(locs[j][:2]*np.pi/180.))
             if len(cols)>2:
                 dt = np.abs(loc[2]-locs[j][2])
             else:
@@ -268,6 +268,8 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
     duffy_logp_mesh = np.hstack((duffy_logp_mesh, np.atleast_2d(t[duffy_ui]).T))
     vivax_data_mesh, vivax_logp_mesh, vivax_fi, vivax_ui, vivax_ti = uniquify_tol(disttol,ttol,lon[where_vivax],lat[where_vivax],t[where_vivax])
     
+    from IPython.Debugger import Pdb
+    Pdb(color_scheme='LightBG').set_trace() 
     
     # Create the mean & its evaluation at the data locations.
     init_OK = False

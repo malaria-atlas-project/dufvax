@@ -1,6 +1,6 @@
 # from mcmc import *
-disttol = 5./6378.
-ttol = 1./12
+disttol = 20./6378.
+ttol = 2./12
 
 import tables as tb
 import numpy as np

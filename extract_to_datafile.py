@@ -8,14 +8,9 @@ from dufvax import covariate_names
 
 # TODO: draw these straight from /Volumes/data
 
-# lon_min, lon_max, lat_min, lat_max = (-19, 52, 0, 24)
-# lon_min, lon_max, lat_min, lat_max = (-19, 52, 8, 37)
-# lon_min, lon_max, lat_min, lat_max = (-19, 52, 5, 20)
-lon_min, lon_max, lat_min, lat_max = (-19, 42, 13, 38)
-
 data_in = csv2rec(sys.argv[1])
 covariate_path = sys.argv[2]
-data_box = data_in[np.where((data_in.lon>=lon_min)*(data_in.lon<=lon_max)*(data_in.lat>=lat_min)*(data_in.lat<=lat_max))]
+data_box = data_in
 
 cols = dict([(key,data_box[key]) for key in data_box.dtype.names])
 for k in ['urban','rural']:
