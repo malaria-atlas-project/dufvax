@@ -268,9 +268,6 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
     duffy_logp_mesh = np.hstack((duffy_logp_mesh, np.atleast_2d(t[duffy_ui]).T))
     vivax_data_mesh, vivax_logp_mesh, vivax_fi, vivax_ui, vivax_ti = uniquify_tol(disttol,ttol,lon[where_vivax],lat[where_vivax],t[where_vivax])
     
-    from IPython.Debugger import Pdb
-    Pdb(color_scheme='LightBG').set_trace() 
-    
     # Create the mean & its evaluation at the data locations.
     init_OK = False
     
