@@ -37,7 +37,7 @@ weirdcols = ['lon','lat','t','vivax_pos','vivax_neg','n','datatype']
 vivaxcols = ['lo_age','up_age','urban','rural',]
 duffycols = ['genaa','genab','genbb','gen00','gena0','genb0','gena1','genb1','gen01','gen11',
             'pheab','phea','pheb','phe0','prom0','promab','aphea','aphe0','bpheb',
-            'bphe0']
+            'bphe0','africa']
 
 coldict = {}
 coldict['t'] = (tstart+tend)/2.
