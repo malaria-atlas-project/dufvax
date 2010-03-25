@@ -40,8 +40,13 @@ clipped_pete_mask = grid_convert(grid_convert(pete_mask,'y-x+','x+y+')[lon_min_i
 af_lon = af_lon[:-1]
 af_lat = af_lat[:-1]
 af_data = af_data[:-1,:-1]
+<<<<<<< Updated upstream
 af_data.mask = af_data.mask + clipped_pete_mask.mask
 map_utils.export_raster(af_lon,af_lat,af_data,'africa','5k-covariates','flt')
+=======
+af_data.mask = af_data.mask + clipped_pete_mask
+map_utils.export_raster(af_lon,af_lat,af_data,'africa','5k-covariates','hdf5')
+>>>>>>> Stashed changes
 
 
 def subset_and_writeout(hf_in, fname, thin, maskval, binfn=lambda x:x):
@@ -107,11 +112,14 @@ glob.close()
 print 'Finding the conservative mask'
 # for res in [1,2,5]:
 res = 5
+af = tb.openFile(os.path.join('%ik-covariates'%res,'africa.hdf5'))
 el = tb.openFile(os.path.join('%ik-covariates'%res,'raw-data.elevation.geographic.world.version-5'.replace('-','_').replace('.','_')+'.hdf5'))
-# c11 = tb.openFile(os.path.join('%ik-covariates'%res,'globcover_channel_190'.replace('-','_').replace('.','_')+'.hdf5'))
-conservative_mask = el.root.mask[:]#+c11.root.mask[:]
+c11 = tb.openFile(os.path.join('%ik-covariates'%res,'globcover_channel_190'.replace('-','_').replace('.','_')+'.hdf5'))
+conservative_mask = el.root.mask[:]+c11.root.mask[:]+af.root.mask[:]
+
 el.close()
 c11.close()
+af.close()
 for fname in filter(lambda x: os.path.splitext(x)[1]=='.hdf5', os.listdir('%ik-covariates'%res)):
     print 'Remasking %s'%(os.path.join('%ik-covariates'%res, fname))
     hf = tb.openFile(os.path.join('%ik-covariates'%res, fname),'a')
