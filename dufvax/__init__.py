@@ -1,5 +1,5 @@
 # from mcmc import *
-disttol = 20./6378.
+disttol = 5./6378.
 ttol = 2./12
 
 import tables as tb
