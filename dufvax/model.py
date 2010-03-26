@@ -129,9 +129,6 @@ def covariance_submodel(suffix, mesh, covariate_values, temporal=False):
     # Create the GP submodel    
     sp_sub = pm.gp.GPSubmodel('sp_sub_%s'%suffix,M,C,mesh)
     sp_sub.f.trace=False
-    sp_sub.M.trace=False
-    sp_sub.C.trace=False
-    # sp_sub.f_eval.trace=False1
     sp_sub.f_eval.value = sp_sub.f_eval.value - sp_sub.f_eval.value.mean()    
     
     return locals()
