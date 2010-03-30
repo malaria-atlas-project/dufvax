@@ -144,7 +144,7 @@ metadata_keys = ['disttol','ttol']
 
 def mcmc_init(M):
     for k in ['b','0','v']:
-        M.use_step_method(GPEvaluationGibbs, M.sp_sub[k], M.V[k], M.eps_p_f[k])
+        M.use_step_method(GPEvaluationGibbs, M.sp_sub[k], M.V[k], M.eps_p_f_d[k])
     
     for k in ['b','0','v']:
         for epf in M.eps_p_f_d[k]:
