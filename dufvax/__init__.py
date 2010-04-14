@@ -1,12 +1,12 @@
 # from mcmc import *
-disttol = 5./6378.
-ttol = 2./12
+disttol = 0./6378.
+ttol = 0./12
 
 import tables as tb
 import numpy as np
 import agecorr
 
-modis_covariates = ['raw_data_elevation_geographic_world_version_5','daytime_land_temp_annual_amplitude_geographic_world_2001_to_2006','daytime_land_temp_triannual_amplitude_geographic_world_2001_to_2006','daytime_land_temp_biannual_amplitude_geographic_world_2001_to_2006']
+modis_covariates = ['raw_data_elevation_geographic_world_version_5','daytime_land_temp_mean_geographic_world_2001_to_2006','daytime_land_temp_annual_amplitude_geographic_world_2001_to_2006','daytime_land_temp_triannual_amplitude_geographic_world_2001_to_2006','daytime_land_temp_biannual_amplitude_geographic_world_2001_to_2006']
 # glob_channels = [11,14,20,30,40,60,110,120,130,140,150,160,170,180,200]
 glob_channels = []
 cmph_covariates = ['CMPH50A%i'%i for i in range(4)]
@@ -81,7 +81,7 @@ def check_data(input):
 
     def duffytimecheck(t):
         """Makes sure times are between 1985 and 2010"""
-        return True-((t[n_vivax:]>=1985) + (t[n_vivax:]<=2010))
+        return True-((t[-n_vivax:]>=1985) + (t[-n_vivax:]<=2010))
     testcol(duffytimecheck,'t')
 
     def dtypecheck(datatype):
@@ -91,7 +91,7 @@ def check_data(input):
 
     def ncheck(n):
         """Makes sure n>0 and not nan"""
-        return (n==0)+np.isnan(n)
+        return (n<0)+np.isnan(n)
     testcol(ncheck,'n')
  
 nugget_labels = {'sp_sub_b': 'V_b', 'sp_sub_0': 'V_0', 'sp_sub_v': 'V_v'}
