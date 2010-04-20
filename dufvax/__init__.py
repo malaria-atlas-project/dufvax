@@ -114,7 +114,7 @@ metadata_keys = ['disttol','ttol']
 
 def mcmc_init(M):
 
-    M.use_step_method(GPEvaluationGibbs, M.sp_sub, M.V, M.eps_p_f_d)
+    M.use_step_method(GPEvaluationGibbs, M.sp_sub, M.V, M.eps_p_f_d, ti=M.vivax_ti)
     
     for epf in M.eps_p_f_d:
         M.use_step_method(pm.AdaptiveMetropolis, epf)
