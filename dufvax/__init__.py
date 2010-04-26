@@ -147,6 +147,14 @@ def mcmc_init(M):
         M.use_step_method(GPEvaluationGibbs, M.sp_sub[k], M.V[k], M.eps_p_f_d[k], ti=M.duffy_ti)
     M.use_step_method(GPEvaluationGibbs, M.sp_sub['v'], M.V['v'], M.eps_p_f_d['v'], ti=M.vivax_ti)
     
+    scalar_s = []
+    scalar_scales = {}
+    for s in M.stochastics:
+        if np.alen(s.value)==1:
+            scalar_s.append(s)
+            scalar_scales[s]=.0001
+    M.use_step_method(pm.AdaptiveMetropolis, scalar_s, scales=scalar_scales)
+    
     for k in ['b','0','v']:
         for epf in M.eps_p_f_d[k]:
             M.use_step_method(pm.AdaptiveMetropolis, epf)
