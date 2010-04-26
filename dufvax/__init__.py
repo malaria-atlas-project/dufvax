@@ -153,7 +153,7 @@ def mcmc_init(M):
         if np.alen(s.value)==1 and s.dtype!=np.dtype('object'):
             scalar_s.append(s)
             scalar_scales[s]=.0001
-    M.use_step_method(pm.AdaptiveMetropolis, scalar_s, scales=scalar_scales)
+    M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s, scales=scalar_scales)
     
     for k in ['b','0','v']:
         for epf in M.eps_p_f_d[k]:
