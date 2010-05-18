@@ -259,8 +259,6 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     # Complication: Vivax can have multiple co-located observations at different times,
     # all corresponding to the same Duffy observation.
     vivax_data_mesh, vivax_logp_mesh, vivax_fi, vivax_ui, vivax_ti = uniquify_tol(disttol,ttol,lon,lat,t)
-    
-    full_vivax_ui = np.arange(len(lon))[where_vivax][vivax_ui]
         
     # Create the mean & its evaluation at the data locations.
     init_OK = False
@@ -269,7 +267,6 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     p1 = pm.Uniform('p1', 0, .04, value=.01)
     
     covariate_key_dict = {'v': set(covariate_keys), 'b': ['africa'], '0':[]}
-    ui_dict = {'v': full_vivax_ui, 'b': duffy_ui, '0': duffy_ui}
     
     bigkeys = filter(lambda k: covariate_values[k].max()>10, covariate_values.keys())
     
@@ -277,7 +274,7 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     
     while not init_OK:
         # try:
-        spatial_vars = zipmap(lambda k: covariance_submodel(k, ra, logp_mesh_dict[k], covariate_key_dict[k], ui_dict[k], input_data, temporal_dict[k]), ['b','0','v'])
+        spatial_vars = zipmap(lambda k: covariance_submodel(k, ra, logp_mesh_dict[k], covariate_key_dict[k], vivax_ui, input_data, temporal_dict[k]), ['b','0','v'])
         sp_sub = spatial_vars['sp_sub']
         V = spatial_vars['V']
         tau = 1./spatial_vars['V']
