@@ -270,8 +270,6 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     
     bigkeys = filter(lambda k: covariate_values[k].max()>10, covariate_values.keys())
     
-    vivax_covariate_values = dict([(k,covariate_values[k][vivax_ui]) for k in vivax_keys])
-    
     while not init_OK:
         # try:
         spatial_vars = zipmap(lambda k: covariance_submodel(k, ra, logp_mesh_dict[k], covariate_key_dict[k], vivax_ui, input_data, temporal_dict[k]), ['b','0','v'])
