@@ -271,7 +271,7 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     p1 = pm.Uniform('p1', 0, .04, value=.01)
     
     covariate_key_dict = {'v': set(covariate_keys), 'b': ['africa'], '0':[]}
-    ui_dict = {'v': vivax_ux, 'b': duffy_ui, '0': duffy_ui}
+    ui_dict = {'v': vivax_ui, 'b': duffy_ui, '0': duffy_ui}
     
     
     logp_mesh_dict = {'b': duffy_logp_mesh, '0': duffy_logp_mesh, 'v': vivax_logp_mesh}
