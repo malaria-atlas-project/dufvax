@@ -43,7 +43,7 @@ class strip_time(object):
     def diag_call(self, x, *args, **kwds):
         return self.f.diag_call(x[:,:2],*args,**kwds) 
 
-def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, temporal=False):
+def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=False):
     """
     A small function that creates the mean and covariance object
     of the random field.
@@ -107,19 +107,19 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, temporal=False):
         
         # covfacs are uniformly distributed on [0,1]        
         covfacs = pm.Lambda('covfacs_%s'%suffix, lambda x=log_covfacs: np.exp(x))
-                
+
         @pm.deterministic(trace=True,name='C_%s'%suffix)
-        def C(amp=amp,scale=scale,inc=inc,ecc=ecc,scale_t=scale_t, t_lim_corr=t_lim_corr, sin_frac=sin_frac, diff_degree=diff_degree, covfacs=covfacs, covariate_keys=covariate_keys, ra=ra):
+        def C(amp=amp,scale=scale,inc=inc,ecc=ecc,scale_t=scale_t, t_lim_corr=t_lim_corr, sin_frac=sin_frac, diff_degree=diff_degree, covfacs=covfacs, covariate_keys=covariate_keys, ra=ra, mesh=mesh, ui=ui):
             facdict = dict([(k,1.e2*covfacs[i]) for i,k in enumerate(covariate_keys)])
             facdict['m'] = 1.e6
-            eval_fun = CovarianceWithCovariates(my_st, mesh, covariate_keys, ui, fac=facdict, ra=ra)
+            eval_fun = CovarianceWithCovariates(my_st, fname, covariate_keys, ui, fac=facdict, ra=ra)
             return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, inc=inc, ecc=ecc,st=scale_t, sd=diff_degree, tlc=t_lim_corr, sf = sin_frac)
                                             
     else:
         # Create the covariance & its evaluation at the data locations.
         @pm.deterministic(trace=True,name='C_%s'%suffix)
-        def C(amp=amp, scale=scale, diff_degree=diff_degree, covariate_keys=covariate_keys, ra=ra):
-            eval_fun = CovarianceWithCovariates(strip_time(pm.gp.matern.geo_rad), mesh, covariate_keys, ui, fac=1.e4, ra=ra)
+        def C(amp=amp, scale=scale, diff_degree=diff_degree, covariate_keys=covariate_keys, ra=ra, mesh=mesh, ui=ui):
+            eval_fun = CovarianceWithCovariates(strip_time(pm.gp.matern.geo_rad), fname, covariate_keys, ui, fac=1.e4, ra=ra)
             return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, diff_degree=diff_degree)
     
     # Create the mean function    
@@ -264,6 +264,8 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     duffy_logp_mesh = np.hstack((duffy_logp_mesh, np.atleast_2d(t[duffy_ui]).T))
     vivax_data_mesh, vivax_logp_mesh, vivax_fi, vivax_ui, vivax_ti = uniquify_tol(disttol,ttol,lon[where_vivax],lat[where_vivax],t[where_vivax])
     
+    full_vivax_ui = np.arange(len(lon))[where_vivax][vivax_ui]
+
     # Create the mean & its evaluation at the data locations.
     init_OK = False
     
@@ -271,7 +273,7 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     p1 = pm.Uniform('p1', 0, .04, value=.01)
     
     covariate_key_dict = {'v': set(covariate_keys), 'b': ['africa'], '0':[]}
-    ui_dict = {'v': vivax_ui, 'b': duffy_ui, '0': duffy_ui}
+    ui_dict = {'v': full_vivax_ui, 'b': duffy_ui, '0': duffy_ui}
     
     
     logp_mesh_dict = {'b': duffy_logp_mesh, '0': duffy_logp_mesh, 'v': vivax_logp_mesh}
@@ -280,7 +282,7 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     init_OK = False
     while not init_OK:
         try:
-            spatial_vars = zipmap(lambda k: covariance_submodel(k, ra, logp_mesh_dict[k], covariate_key_dict[k], ui_dict[k], temporal_dict[k]), ['b','0','v'])
+            spatial_vars = zipmap(lambda k: covariance_submodel(k, ra, logp_mesh_dict[k], covariate_key_dict[k], ui_dict[k], input_data, temporal_dict[k]), ['b','0','v'])
             sp_sub = zipmap(lambda k: spatial_vars[k]['sp_sub'], ['b','0','v'])
             sp_sub_b, sp_sub_0, sp_sub_v = [sp_sub[k] for k in ['b','0','v']]
             V = zipmap(lambda k: spatial_vars[k]['V'], ['b','0','v'])
