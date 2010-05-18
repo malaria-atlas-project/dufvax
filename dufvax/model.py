@@ -267,7 +267,7 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     p1 = pm.Uniform('p1', 0, .04, value=.01)
     
 
-    spatial_vars = covariance_submodel(k, ra, vivax_logp_mesh, covariate_keys, vivax_ui, input_data, temporal=True)
+    spatial_vars = covariance_submodel('v', ra, vivax_logp_mesh, covariate_keys, vivax_ui, input_data, temporal=True)
     sp_sub = spatial_vars['sp_sub']
     V = spatial_vars['V']
     tau = 1./spatial_vars['V']
