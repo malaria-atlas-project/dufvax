@@ -266,22 +266,15 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     # Probability of mutation in the promoter region, given that the other thing is a.
     p1 = pm.Uniform('p1', 0, .04, value=.01)
     
-    covariate_key_dict = {'v': set(covariate_keys), 'b': ['africa'], '0':[]}
+
+    spatial_vars = covariance_submodel(k, ra, vivax_logp_mesh, covariate_keys, vivax_ui, input_data, temporal=True)
+    sp_sub = spatial_vars['sp_sub']
+    V = spatial_vars['V']
+    tau = 1./spatial_vars['V']
     
-    while not init_OK:
-        # try:
-        spatial_vars = zipmap(lambda k: covariance_submodel(k, ra, logp_mesh_dict[k], covariate_key_dict[k], vivax_ui, input_data, temporal_dict[k]), ['b','0','v'])
-        sp_sub = spatial_vars['sp_sub']
-        V = spatial_vars['V']
-        tau = 1./spatial_vars['V']
-        
-        # Loop over data clusters, adding nugget and applying link function.
-        f = spatial_vars['sp_sub'].f_eval
-        init_OK = True
-    # except pm.ZeroProbability, msg:
-    #     print 'Trying again: %s'%msg
-    #     init_OK = False
-    #     gc.collect()        
+    # Loop over data clusters, adding nugget and applying link function.
+    f = spatial_vars['sp_sub'].f_eval
+    init_OK = True
 
     eps_p_f_d = []
     p_d = []
@@ -294,13 +287,13 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
             this_f = f[vivax_fi[sl]]
 
             # Nuggeted field in this cluster
-            eps_p_f_d.append(pm.Normal('eps_p_fv_%i'%i, this_f, tau, value=np.random.normal(size=np.shape(this_f.value)), trace=False))
+            eps_p_f_d.append(pm.Normal('eps_p_f_%i'%i, this_f, tau, value=np.random.normal(size=np.shape(this_f.value)), trace=False))
     
             # The allele frequency
-            p_d.append(pm.Lambda('p%s_%i'%('v',i),lambda lt=eps_p_f_d[-1]: invlogit(np.atleast_1d(lt)),trace=False))
+            p_d.append(pm.Lambda('p_%i'%i,lambda lt=eps_p_f_d[-1]: invlogit(np.atleast_1d(lt)),trace=False))
 
     # The fields plus the nugget
-    eps_p_f = pm.Lambda('eps_p_fv', lambda eps_p_f_d=eps_p_f_d: np.hstack(eps_p_f_d))    
+    eps_p_f = pm.Lambda('eps_p_f', lambda eps_p_f_d=eps_p_f_d: np.hstack(eps_p_f_d))    
 
     # The likelihoods.
     data_d = []    
