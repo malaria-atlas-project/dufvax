@@ -116,6 +116,14 @@ def mcmc_init(M):
 
     M.use_step_method(GPEvaluationGibbs, M.sp_sub, M.V, M.eps_p_f_d, ti=M.vivax_ti)
     
+    scalar_s = []
+    scalar_scales = {}
+    for s in M.stochastics:
+        if np.alen(s.value)==1 and s.dtype!=np.dtype('object') and s not in M.eps_p_f_d:
+            scalar_s.append(s)
+            scalar_scales[s]=.0001
+    M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s, scales=scalar_scales)
+    
     for epf in M.eps_p_f_d:
         M.use_step_method(pm.AdaptiveMetropolis, epf)
             
