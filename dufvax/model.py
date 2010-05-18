@@ -31,6 +31,7 @@ import warnings
 from agecorr import age_corr_likelihoods
 from dufvax import P_trace, S_trace, F_trace, a_pred
 from scipy import interpolate as interp
+from pylab import csv2rec
 
 __all__ = ['make_model']
 
@@ -42,7 +43,7 @@ class strip_time(object):
     def diag_call(self, x, *args, **kwds):
         return self.f.diag_call(x[:,:2],*args,**kwds) 
 
-def covariance_submodel(suffix, mesh, covariate_values, temporal=False):
+def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, temporal=False):
     """
     A small function that creates the mean and covariance object
     of the random field.
@@ -95,7 +96,7 @@ def covariance_submodel(suffix, mesh, covariate_values, temporal=False):
         
         covfac_pow = pm.Exponential('covfac_pow_%s'%suffix, .1, value=.5)
         
-        covariate_names = covariate_values.keys()
+        covariate_names = covariate_keys
         @pm.stochastic(name='log_covfacs_%s'%suffix)
         def log_covfacs(value=-np.ones(len(covariate_names))*.01, k=covfac_pow):
             """Induced prior on covfacs is p(x)=(1+k)(1-x)^k, x\in [0,1]"""
@@ -108,17 +109,17 @@ def covariance_submodel(suffix, mesh, covariate_values, temporal=False):
         covfacs = pm.Lambda('covfacs_%s'%suffix, lambda x=log_covfacs: np.exp(x))
                 
         @pm.deterministic(trace=True,name='C_%s'%suffix)
-        def C(amp=amp,scale=scale,inc=inc,ecc=ecc,scale_t=scale_t, t_lim_corr=t_lim_corr, sin_frac=sin_frac, diff_degree=diff_degree, covfacs=covfacs):
-            facdict = dict([(k,1.e2*covfacs[i]) for i,k in enumerate(covariate_names)])
+        def C(amp=amp,scale=scale,inc=inc,ecc=ecc,scale_t=scale_t, t_lim_corr=t_lim_corr, sin_frac=sin_frac, diff_degree=diff_degree, covfacs=covfacs, covariate_keys=covariate_keys, ra=ra):
+            facdict = dict([(k,1.e2*covfacs[i]) for i,k in enumerate(covariate_keys)])
             facdict['m'] = 1.e6
-            eval_fun = CovarianceWithCovariates(my_st, mesh, covariate_values, fac=facdict)
+            eval_fun = CovarianceWithCovariates(my_st, mesh, covariate_keys, ui, fac=facdict, ra=ra)
             return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, inc=inc, ecc=ecc,st=scale_t, sd=diff_degree, tlc=t_lim_corr, sf = sin_frac)
                                             
     else:
         # Create the covariance & its evaluation at the data locations.
         @pm.deterministic(trace=True,name='C_%s'%suffix)
-        def C(amp=amp, scale=scale, diff_degree=diff_degree):
-            eval_fun = CovarianceWithCovariates(strip_time(pm.gp.matern.geo_rad), mesh, covariate_values, fac=1.e4)
+        def C(amp=amp, scale=scale, diff_degree=diff_degree, covariate_keys=covariate_keys, ra=ra):
+            eval_fun = CovarianceWithCovariates(strip_time(pm.gp.matern.geo_rad), mesh, covariate_keys, ui, fac=1.e4, ra=ra)
             return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, diff_degree=diff_degree)
     
     # Create the mean function    
@@ -233,7 +234,7 @@ def uniquify(*cols):
     
 
 #TODO: Cut both Duffy and Vivax    
-def make_model(lon,lat,t,covariate_values,n,datatype,
+def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
                 genaa,genab,genbb,gen00,gena0,genb0,gena1,genb1,gen01,gen11,
                 pheab,phea,pheb,
                 phe0,prom0,promab,
@@ -245,16 +246,14 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
     """
     This function is required by the generic MBG code.
     """
+    
+    ra = csv2rec(input_data)
+    
     # Step method granularity    
     grainsize = 20
     
     where_vivax = np.where(datatype=='vivax')
     from dufvax import disttol, ttol
-    
-    
-    # Rebind input variables for convenience
-    # for dlab in ['genaa','genab','genbb','gen00','gena0','genb0','gena1','genb1','gen01','gen11','pheab','phea','pheb','phe0','prom0','promab','aphea','aphe0','bpheb','bphe0']:
-    #     exec('%s=%s[where_duffy]'(%dlab,dlab))
     
     # Duffy needs to be modelled everywhere Duffy or Vivax is observed.
     # Vivax only needs to be modelled where Vivax is observed.
@@ -271,32 +270,17 @@ def make_model(lon,lat,t,covariate_values,n,datatype,
     # Probability of mutation in the promoter region, given that the other thing is a.
     p1 = pm.Uniform('p1', 0, .04, value=.01)
     
-    vivax_keys = set(covariate_values.keys())
+    covariate_key_dict = {'v': set(covariate_keys), 'b': ['africa'], '0':[]}
+    ui_dict = {'v': vivax_ux, 'b': duffy_ui, '0': duffy_ui}
     
-    bigkeys = filter(lambda k: covariate_values[k].max()>10, covariate_values.keys())
     
-    vivax_covariate_values = dict([(k,covariate_values[k][vivax_ui]) for k in vivax_keys])
     logp_mesh_dict = {'b': duffy_logp_mesh, '0': duffy_logp_mesh, 'v': vivax_logp_mesh}
     temporal_dict = {'b': False, '0': False, 'v': True}
-    covariate_value_dict = {'b': {'africa': covariate_values['africa'][duffy_ui]},
-                            '0': {},
-                            'v': vivax_covariate_values}
     
-    for k,v in covariate_value_dict.iteritems():
-        if k.find('channel')>-1:
-            print 'Hi!'
-            values = set(v)
-            print values
-            nmin = np.inf
-            for value in values:
-                nmin = min(np.sum(v==value),nmin)
-            if nmin < 100:
-                warnings.warn('Not good representation for covariate %s'%key)
-
     init_OK = False
     while not init_OK:
         try:
-            spatial_vars = zipmap(lambda k: covariance_submodel(k, logp_mesh_dict[k], covariate_value_dict[k], temporal_dict[k]), ['b','0','v'])
+            spatial_vars = zipmap(lambda k: covariance_submodel(k, ra, logp_mesh_dict[k], covariate_key_dict[k], ui_dict[k], temporal_dict[k]), ['b','0','v'])
             sp_sub = zipmap(lambda k: spatial_vars[k]['sp_sub'], ['b','0','v'])
             sp_sub_b, sp_sub_0, sp_sub_v = [sp_sub[k] for k in ['b','0','v']]
             V = zipmap(lambda k: spatial_vars[k]['V'], ['b','0','v'])
