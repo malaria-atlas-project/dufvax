@@ -150,7 +150,7 @@ def mcmc_init(M):
     scalar_s = []
     scalar_scales = {}
     for s in M.stochastics:
-        if np.alen(s.value)==1 and s.dtype!=np.dtype('object'):
+        if np.alen(s.value)==1 and s.dtype!=np.dtype('object') and np.all([s not in M.eps_p_f_d[k] for k in ['b','0','v']]):
             scalar_s.append(s)
             scalar_scales[s]=.0001
     M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s, scales=scalar_scales)
