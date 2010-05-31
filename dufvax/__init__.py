@@ -147,13 +147,16 @@ def mcmc_init(M):
         M.use_step_method(GPEvaluationGibbs, M.sp_sub[k], M.V[k], M.eps_p_f_d[k], ti=M.duffy_ti)
     M.use_step_method(GPEvaluationGibbs, M.sp_sub['v'], M.V['v'], M.eps_p_f_d['v'], ti=M.vivax_ti)
     
-    scalar_s = []
-    scalar_scales = {}
+    scalar_s = {'v': [], 'b': [], '0': []}
+    scalar_scales = {'v': {}, 'b': {}, '0': {}}
     for s in M.stochastics:
-        if np.alen(s.value)==1 and s.dtype!=np.dtype('object') and np.all([s not in M.eps_p_f_d[k] for k in ['b','0','v']]):
-            scalar_s.append(s)
-            scalar_scales[s]=.0001
-    M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s, scales=scalar_scales)
+        suffix = s.__name__[-1]
+        if np.alen(s.value)==1 and s.dtype!=np.dtype('object') and np.all([s not in M.eps_p_f_d[k] for k in ['b','0','v']]) and suffix in ['b','v','0']:
+            scalar_s[suffix].append(s)
+            scalar_scales[suffix][s]=.0001
+    
+    for suffix in ['v','b','0']:
+        M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s[suffix], scales=scalar_scales[suffix])
     
     for k in ['b','0','v']:
         for epf in M.eps_p_f_d[k]:

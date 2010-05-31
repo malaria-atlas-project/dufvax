@@ -97,6 +97,7 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
         covfac_pow = pm.Exponential('covfac_pow_%s'%suffix, .1, value=.5)
         
         covariate_names = covariate_keys
+        @pm.observed
         @pm.stochastic(name='log_covfacs_%s'%suffix)
         def log_covfacs(value=-np.ones(len(covariate_names))*.01, k=covfac_pow):
             """Induced prior on covfacs is p(x)=(1+k)(1-x)^k, x\in [0,1]"""
