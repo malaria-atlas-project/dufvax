@@ -148,25 +148,23 @@ def mcmc_init(M):
     M.use_step_method(GPEvaluationGibbs, M.sp_sub['v'], M.V['v'], M.eps_p_f_d['v'], ti=M.vivax_ti)
     
     scalar_s = {'v': [], 'b': [], '0': []}
-    scalar_scales = {'v': {}, 'b': {}, '0': {}}
     for s in M.stochastics:
         suffix = s.__name__[-1]
         if np.alen(s.value)==1 and s.dtype!=np.dtype('object') and np.all([s not in M.eps_p_f_d[k] for k in ['b','0','v']]) and suffix in ['b','v','0']:
             scalar_s[suffix].append(s)
-            scalar_scales[suffix][s]=.0001
     
     for suffix in ['v','b','0']:
-        M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s[suffix], scales=scalar_scales[suffix])
+        M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s[suffix], delay=20000, interval=100)
+        M.step_method_dict[scalar_s[suffix][0]].proposal_sd *= .1
     
     for k in ['b','0','v']:
-        for epf in M.eps_p_f_d[k]:
-            M.use_step_method(pm.AdaptiveMetropolis, epf)
+        M.use_step_method(pm.AdaptiveMetropolis, [epf for epf in M.eps_p_f_d[k]])
             
     M.assign_step_methods()
-    for sm in M.step_method_dict.itervalues():
-        for smm in sm:
-            smm._tuning_info=[]
-            smm._state = []
+    # for sm in M.step_method_dict.itervalues():
+    #     for smm in sm:
+    #         smm._tuning_info=[]
+    #         smm._state = []
             
 
 non_cov_columns = { 'n': 'int',
