@@ -62,8 +62,8 @@ def check_data(input):
         raise ValueError, 'Some nans in %s'%k
     
     # Column-specific checks
-    def testcol(predicate, col):
-        where_fail = np.where(predicate(input[col]))
+    def testcol(predicate, *cols):
+        where_fail = np.where(predicate(*[input[col] for col in cols]))
         if len(where_fail[0])>0:
             raise ValueError, 'Test %s fails. %s \nFailure at rows %s'%(predicate.__name__, predicate.__doc__, where_fail[0]+1)
 
@@ -79,10 +79,10 @@ def check_data(input):
         return np.abs(lat)>180. + np.isnan(lat)
     testcol(latcheck,'lat')
 
-    def duffytimecheck(t):
+    def duffytimecheck(t, datatype):
         """Makes sure times are between 1985 and 2010"""
-        return True-((t[-n_vivax:]>=1985) + (t[-n_vivax:]<=2010))
-    testcol(duffytimecheck,'t')
+        return True-((t[np.where(datatype=='vivax')]>=1985) + (t[np.where(datatype=='vivax')]<=2010))
+    testcol(duffytimecheck,'t','datatype')
 
     def dtypecheck(datatype):
         """Makes sure all datatypes are recognized."""
