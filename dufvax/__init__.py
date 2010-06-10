@@ -154,7 +154,7 @@ def mcmc_init(M):
             scalar_s[suffix].append(s)
     
     for suffix in ['v','b','0']:
-        M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s[suffix], delay=20000, interval=100)
+        M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s[suffix], delay=10000, interval=100)
         M.step_method_dict[scalar_s[suffix][0]][0].proposal_sd *= .1
     
     for k in ['b','0','v']:

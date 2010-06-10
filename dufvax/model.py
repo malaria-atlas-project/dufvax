@@ -62,7 +62,7 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
     scale_in_km = scale*6378.1
     
     # This parameter controls the degree of differentiability of the field.
-    diff_degree = pm.Uniform('diff_degree_%s'%suffix, .5, 3)
+    diff_degree = pm.Uniform('diff_degree_%s'%suffix, .5, 3, value=.5, observed=(suffix=='v'))
     
     # The nugget variance. Lower-bounded to preserve mixing.
     V = pm.Exponential('V_%s'%suffix, .1, value=1.)
@@ -94,7 +94,8 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
             else:
                 return 0.
         
-        covfac_pow = pm.Exponential('covfac_pow_%s'%suffix, .1, value=.5)
+        # covfac_pow = pm.Exponential('covfac_pow_%s'%suffix, .1, value=.5)
+        covfac_pow = 0
         
         covariate_names = covariate_keys
         @pm.observed
