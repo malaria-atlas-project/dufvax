@@ -150,7 +150,7 @@ def mcmc_init(M):
     scalar_s = {'v': [], 'b': [], '0': []}
     for s in M.stochastics:
         suffix = s.__name__[-1]
-        if np.alen(s.value)==1 and s.dtype!=np.dtype('object') and np.all([s not in M.eps_p_f_d[k] for k in ['b','0','v']]) and suffix in ['b','v','0']:
+        if np.alen(s.value)==1 and s.dtype!=np.dtype('object') and np.all([s not in M.eps_p_f_d[k] for k in ['b','0','v']]) and suffix in ['b','v','0'] and s.__name__[0] != 'V':
             scalar_s[suffix].append(s)
     
     for suffix in ['v','b','0']:
