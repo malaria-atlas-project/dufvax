@@ -64,8 +64,8 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
     # This parameter controls the degree of differentiability of the field.
     diff_degree = pm.Uniform('diff_degree_%s'%suffix, .5, 3, value=.5, observed=(suffix=='v'))
     
-    # The nugget variance. Lower-bounded to preserve mixing.
-    V = pm.Exponential('V_%s'%suffix, .1, value=1.)
+    # The nugget variance.
+    V = pm.Exponential('V_%s'%suffix, 1, value=1.)
     
     @pm.potential
     def V_bound(V=V):
@@ -79,13 +79,13 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
         ecc = 0
         # Exponential prior on the temporal scale/range, phi_t. Standard one-over-x
         # doesn't work bc data aren't strong enough to prevent collapse to zero.
-        scale_t = pm.Exponential('scale_t_%s'%suffix, .01,value=.1)
+        scale_t = pm.Exponential('scale_t_%s'%suffix, .01,value=1)
 
         # Uniform prior on limiting correlation far in the future or past.
-        t_lim_corr = pm.Uniform('t_lim_corr_%s'%suffix,0,1,value=.01)
+        t_lim_corr = pm.Uniform('t_lim_corr_%s'%suffix,0,1,value=.8)
 
         # # Uniform prior on sinusoidal fraction in temporal variogram
-        sin_frac = pm.Uniform('sin_frac_%s'%suffix,0,1,value=.01)
+        sin_frac = pm.Uniform('sin_frac_%s'%suffix,0,1,value=.1)
         
         @pm.potential(name='st_constraint_%s'%suffix)
         def st_constraint(sd=.5, sf=sin_frac, tlc=t_lim_corr):    
