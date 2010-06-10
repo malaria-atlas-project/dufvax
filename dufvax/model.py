@@ -50,19 +50,19 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
     """
     
     # The partial sill.
-    amp = pm.Exponential('amp_%s'%suffix, .1, value=1.)
+    amp = pm.Exponential('amp_%s'%suffix, .1, value=9.)
     
     # The range parameter. Units are RADIANS. 
     # 1 radian = the radius of the earth, about 6378.1 km
     # scale = pm.Exponential('scale', 1./.08, value=.08)
     
-    scale = pm.Exponential('scale_%s'%suffix, 5, value=.08)
+    scale = pm.Exponential('scale_%s'%suffix, 5, value=.5)
     # scale_shift = pm.Exponential('scale_shift_%s'%suffix, .1, value=.08)
     # scale = pm.Lambda('scale_%s'%suffix,lambda s=scale_shift: s+.01)
     scale_in_km = scale*6378.1
     
     # This parameter controls the degree of differentiability of the field.
-    diff_degree = pm.Uniform('diff_degree_%s'%suffix, .5, 3, value=.5, observed=True)
+    diff_degree = pm.Uniform('diff_degree_%s'%suffix, .5, 3, value=.5+(suffix!='v'), observed=(suffix=='v'))
     
     # The nugget variance.
     V = pm.Exponential('V_%s'%suffix, 1, value=1., observed=True)
@@ -79,7 +79,7 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
         ecc = 0
         # Exponential prior on the temporal scale/range, phi_t. Standard one-over-x
         # doesn't work bc data aren't strong enough to prevent collapse to zero.
-        scale_t = pm.Exponential('scale_t_%s'%suffix, .01,value=1)
+        scale_t = pm.Exponential('scale_t_%s'%suffix, 5,value=1)
 
         # Uniform prior on limiting correlation far in the future or past.
         t_lim_corr = pm.Uniform('t_lim_corr_%s'%suffix,0,1,value=.8)
