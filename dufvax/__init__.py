@@ -153,6 +153,8 @@ def mcmc_init(M):
         if np.alen(s.value)==1 and s.dtype!=np.dtype('object') and np.all([s not in M.eps_p_f_d[k] for k in ['b','0','v']]) and suffix in ['b','v','0'] and s.__name__[0] != 'V':
             scalar_s[suffix].append(s)
     
+    M.use_step_method(pm.AdaptiveMetropolis, [getattr(M, 'V_'+suffix) for suffix in ['b'],['0'],['v']]])
+    
     for suffix in ['v','b','0']:
         M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s[suffix], delay=10000, interval=1000)
         M.step_method_dict[scalar_s[suffix][0]][0].proposal_sd *= .1
