@@ -150,7 +150,7 @@ cf2py threadsafe
             pb = 1.0D0 / (1.0D0 + dexp(-fb(i)))
             p0 = 1.0D0 / (1.0D0 + dexp(-f0(i)))
             pv = 1.0D0 / (1.0D0 + dexp(-fv(i)))
-            pb = (pb*p0 + (1-pb)*p1)
+            pb = 1.0D0-(pb*p0 + (1.0D0-pb)*p1)
             fb(i) = pb*pb*pv*ttf
         end do
 
