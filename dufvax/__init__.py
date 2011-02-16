@@ -32,7 +32,6 @@ except IOError:
     P_trace, S_trace, F_trace = [None]*3
 
 from model import *
-from generic_mbg import FieldStepper
 from pymc import thread_partition_array
 from pymc.gp import GPEvaluationGibbs
 import dufvax
