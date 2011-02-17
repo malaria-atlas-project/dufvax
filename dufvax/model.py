@@ -249,7 +249,7 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
                 # The allele frequency
                 p_d[k].append(pm.Lambda('p%s_%i'%(k,i),lambda lt=eps_p_f_d[k][-1]: invlogit(np.atleast_1d(lt)),trace=False))
             for loc in duffy_data_mesh[sl]:
-                loc_chunks['b0'][loc] = i
+                loc_chunks['b0'][tuple(loc)] = i
 
     for k in ['b','0']:
         # The fields plus the nugget
@@ -268,7 +268,7 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
             # The allele frequency
             p_d['v'].append(pm.Lambda('p%s_%i'%(k,i),lambda lt=eps_p_f_d['v'][-1]: invlogit(np.atleast_1d(lt)),trace=False))
         for loc in vivax_data_mesh[sl]:
-            loc_chunks['v'][loc] = i
+            loc_chunks['v'][tuple(loc)] = i
 
     # The fields plus the nugget
     eps_p_f['v'] = pm.Lambda('eps_p_fv', lambda eps_p_f_d=eps_p_f_d['v']: np.hstack(eps_p_f_d))    

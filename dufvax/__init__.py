@@ -160,7 +160,8 @@ def mcmc_init(M):
         M.step_method_dict[scalar_s[suffix][0]][0].proposal_sd *= .1
     
     loc_sms = {}
-    for loc in np.vstack((M.vivax_data_mesh, M.duffy_data_mesh)):
+    for loc_ in np.vstack((M.vivax_data_mesh, M.duffy_data_mesh)):
+        loc = tuple(loc_)
         duffy_i = M.loc_chunks['b0'][loc]
         vivax_i = M.loc_chunks['v'].get(loc,None)
         epfds = [M.eps_p_fd['b'][duffy_i], M.eps_p_fd['0'][duffy_i]]
