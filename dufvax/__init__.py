@@ -187,7 +187,7 @@ def mcmc_init(M):
     M.assign_step_methods()
     
     for k,v in M.step_method_dict.iteritems():
-        if len(v)>0:
+        if len(v)>1:
             raise ValueError
     # for sm in M.step_method_dict.itervalues():
     #     for smm in sm:
