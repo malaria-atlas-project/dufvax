@@ -177,7 +177,7 @@ def mcmc_init(M):
                 break
         
         if loc_chunk:
-            loc_chunks |= loc_chunk
+            loc_chunks.add(loc_chunk)
         
         
     for lc in loc_chunks:    
