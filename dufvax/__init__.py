@@ -159,20 +159,29 @@ def mcmc_init(M):
         M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s[suffix], delay=10000, interval=1000)
         M.step_method_dict[scalar_s[suffix][0]][0].proposal_sd *= .1
     
-    loc_sms = {}
-    for loc_ in np.vstack((M.vivax_data_mesh, M.duffy_data_mesh)):
+    loc_chunks = set()
+    for loc_ in M.duffy_data_mesh:
         loc = tuple(loc_)
-        duffy_i = M.loc_chunks['b0'][loc]
+        loc_chunk = set()
+        duffy_i = M.loc_chunks['b0'].get(loc,None)
         vivax_i = M.loc_chunks['v'].get(loc,None)
-        epfds = [M.eps_p_f_d['b'][duffy_i], M.eps_p_f_d['0'][duffy_i]]
+        if duffy_i:
+            loc_chunk += set([M.eps_p_f_d['b'][duffy_i], M.eps_p_f_d['0'][duffy_i]])
         if vivax_i:
-            epfds.append(M.eps_p_f_d['v'][vivax_i])
+            loc_chunk += epfds.append(M.eps_p_f_d['v'][vivax_i])
+            
+        for lc in loc_chunks:
+            if lc.intersection(loc_chunk):
+                lc += loc_chunk
+                loc_chunk = None
+                break
         
-        if np.all([epfd in M.step_method_dict.keys() for epfd in epfds]):
-            continue
+        if loc_chunk:
+            loc_chunks += loc_chunk
         
-        else:
-            M.use_step_method(pm.AdaptiveMetropolis, epfds, delay=10000, interval=1000)
+        
+    for lc in loc_chunks:    
+        M.use_step_method(pm.AdaptiveMetropolis, list(lc), delay=10000, interval=1000)
         
     
     M.assign_step_methods()
