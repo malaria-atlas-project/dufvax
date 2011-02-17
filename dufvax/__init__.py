@@ -168,7 +168,7 @@ def mcmc_init(M):
         if vivax_i:
             epfds.append(M.eps_p_f_d['v'][vivax_i])
         
-        if np.all([epfd in M.step_method_dict.keys()]):
+        if np.all([epfd in M.step_method_dict.keys() for epfd in epfds]):
             continue
         
         else:
