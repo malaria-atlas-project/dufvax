@@ -159,10 +159,26 @@ def mcmc_init(M):
         M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s[suffix], delay=10000, interval=1000)
         M.step_method_dict[scalar_s[suffix][0]][0].proposal_sd *= .1
     
-    # for k in ['b','0','v']:
-    #     M.use_step_method(pm.AdaptiveMetropolis, [epf for epf in M.eps_p_f_d[k]])
-            
+    loc_sms = {}
+    for loc in np.vstack((M.vivax_data_mesh, M.duffy_data_mesh)):
+        duffy_i = M.loc_chunks['b0'][loc]
+        vivax_i = M.loc_chunks['v'].get(loc,None)
+        epfds = [M.eps_p_fd['b'][duffy_i], M.eps_p_fd['0'][duffy_i]]
+        if vivax_i:
+            epfds.append(M.eps_p_fd['v'][vivax_i])
+        
+        if np.all([epfd in M.step_method_dict.keys()]):
+            continue
+        
+        else:
+            M.use_step_method(pm.AdaptiveMetropolis, epfds, delay=10000, interval=1000)
+        
+    
     M.assign_step_methods()
+    
+    for k,v in M.step_method_dict.iteritems():
+        if len(v)>0:
+            raise ValueError
     # for sm in M.step_method_dict.itervalues():
     #     for smm in sm:
     #         smm._tuning_info=[]

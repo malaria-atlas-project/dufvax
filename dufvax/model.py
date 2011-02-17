@@ -164,77 +164,6 @@ for i in xrange(1000):
 def zipmap(f, keys):
     return dict(zip(keys, map(f, keys)))
 
-def uniquify_tol(disttol, ttol, *cols):
-    locs = [np.array([col[0] for col in cols])]
-    fi = [0]
-    ui = [0]
-    dx = np.empty(1)
-    for i in xrange(1,len(cols[0])):
-
-        # If repeat location, add observation
-        loc = np.array([col[i] for col in cols])
-        for j in xrange(len(locs)):
-            pm.gp.geo_rad(dx, np.atleast_2d(loc[:2]*np.pi/180.), np.atleast_2d(locs[j][:2]*np.pi/180.))
-            if len(cols)>2:
-                dt = np.abs(loc[2]-locs[j][2])
-            else:
-                dt = 0
-            if dx[0]<=disttol and dt<=ttol:
-                fi.append(j)
-                break
-
-        # Otherwise, new obs
-        else:
-            locs.append(loc)
-            fi.append(max(fi)+1)
-            ui.append(i)
-    fi = np.array(fi)
-    ti = [np.where(fi == i)[0] for i in xrange(max(fi)+1)]
-    ui = np.asarray(ui)
-
-    locs = np.array(locs)
-    if len(cols)==3:
-        data_mesh = combine_st_inputs(*cols)
-        logp_mesh = combine_st_inputs(locs[:,0], locs[:,1], locs[:,2])
-    else:
-        data_mesh = combine_spatial_inputs(*cols)
-        logp_mesh = combine_spatial_inputs(locs[:,0], locs[:,1])
-
-    return data_mesh, logp_mesh, fi, ui, ti
-
-
-def uniquify(*cols):
-
-    locs = [tuple([col[0] for col in cols])]
-    fi = [0]
-    ui = [0]
-    for i in xrange(1,len(cols[0])):
-        
-        # If repeat location, add observation
-        loc = tuple([col[i] for col in cols])
-        if loc in locs:
-            fi.append(locs.index(loc))
-            
-        # Otherwise, new obs
-        else:
-            locs.append(loc)
-            fi.append(max(fi)+1)
-            ui.append(i)
-    fi = np.array(fi)
-    ti = [np.where(fi == i)[0] for i in xrange(max(fi)+1)]
-    ui = np.asarray(ui)
-    
-    locs = np.array(locs)
-    if len(cols)==3:
-        data_mesh = combine_st_inputs(*cols)
-        logp_mesh = combine_st_inputs(locs[:,0], locs[:,1], locs[:,2])
-    else:
-        data_mesh = combine_spatial_inputs(*cols)
-        logp_mesh = combine_spatial_inputs(locs[:,0], locs[:,1])
-        
-    return data_mesh, logp_mesh, fi, ui, ti
-    
-
 #TODO: Cut both Duffy and Vivax    
 def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
                 genaa,genab,genbb,gen00,gena0,genb0,gena1,genb1,gen01,gen11,
@@ -302,10 +231,13 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     eps_p_f_d = {'b':[], '0':[], 'v':[]}
     p_d = {'b':[], '0': [], 'v': []}
     eps_p_f = {}
+    eps_p_f_groups = []
+    
+    loc_chunks = {'b0': {}, 'v': {}}
         
     # Duffy eps_p_f's and p's, eval'ed everywhere.
-    for k in ['b','0']:    
-        for i in xrange(int(np.ceil(len(n)/float(grainsize)))):
+    for i in xrange(int(np.ceil(len(n)/float(grainsize)))):
+        for k in ['b','0']:
             sl = slice(i*grainsize,(i+1)*grainsize,None)                
             if sl.stop>sl.start:
             
@@ -316,7 +248,10 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
         
                 # The allele frequency
                 p_d[k].append(pm.Lambda('p%s_%i'%(k,i),lambda lt=eps_p_f_d[k][-1]: invlogit(np.atleast_1d(lt)),trace=False))
+            for loc in duffy_data_mesh[sl]:
+                loc_chunks['b0'][loc] = i
 
+    for k in ['b','0']:
         # The fields plus the nugget
         eps_p_f[k] = pm.Lambda('eps_p_f%s'%k, lambda eps_p_f_d=eps_p_f_d[k]: np.hstack(eps_p_f_d))
         
@@ -332,6 +267,8 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     
             # The allele frequency
             p_d['v'].append(pm.Lambda('p%s_%i'%(k,i),lambda lt=eps_p_f_d['v'][-1]: invlogit(np.atleast_1d(lt)),trace=False))
+        for loc in vivax_data_mesh[sl]:
+            loc_chunks['v'][loc] = i
 
     # The fields plus the nugget
     eps_p_f['v'] = pm.Lambda('eps_p_fv', lambda eps_p_f_d=eps_p_f_d['v']: np.hstack(eps_p_f_d))    
