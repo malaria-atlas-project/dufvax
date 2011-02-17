@@ -168,7 +168,7 @@ def mcmc_init(M):
         if duffy_i:
             loc_chunk |= set([M.eps_p_f_d['b'][duffy_i], M.eps_p_f_d['0'][duffy_i]])
         if vivax_i:
-            loc_chunk |= epfds.append(M.eps_p_f_d['v'][vivax_i])
+            loc_chunk |= set([M.eps_p_f_d['v'][vivax_i]])
             
         for lc in loc_chunks:
             if lc.intersection(loc_chunk):
