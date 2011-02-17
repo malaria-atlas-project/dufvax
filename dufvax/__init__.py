@@ -164,9 +164,9 @@ def mcmc_init(M):
         loc = tuple(loc_)
         duffy_i = M.loc_chunks['b0'][loc]
         vivax_i = M.loc_chunks['v'].get(loc,None)
-        epfds = [M.eps_p_fd['b'][duffy_i], M.eps_p_fd['0'][duffy_i]]
+        epfds = [M.eps_p_f_d['b'][duffy_i], M.eps_p_f_d['0'][duffy_i]]
         if vivax_i:
-            epfds.append(M.eps_p_fd['v'][vivax_i])
+            epfds.append(M.eps_p_f_d['v'][vivax_i])
         
         if np.all([epfd in M.step_method_dict.keys()]):
             continue
