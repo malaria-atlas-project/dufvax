@@ -159,7 +159,7 @@ def mcmc_init(M):
         M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s[suffix], delay=10000, interval=1000)
         M.step_method_dict[scalar_s[suffix][0]][0].proposal_sd *= .1
     
-    loc_chunks = set()
+    loc_chunks = []
     for loc_ in M.duffy_data_mesh:
         loc = tuple(loc_)
         loc_chunk = set()
@@ -177,7 +177,7 @@ def mcmc_init(M):
                 break
         
         if loc_chunk:
-            loc_chunks.add(loc_chunk)
+            loc_chunks.append(loc_chunk)
         
         
     for lc in loc_chunks:    
