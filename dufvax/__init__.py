@@ -144,51 +144,27 @@ metadata_keys = ['disttol','ttol']
 
 def mcmc_init(M):
     for k in ['b','0']:
-        M.use_step_method(GPEvaluationGibbs, M.sp_sub[k], M.V[k], M.eps_p_f_d[k], ti=M.duffy_ti)
-    M.use_step_method(GPEvaluationGibbs, M.sp_sub['v'], M.V['v'], M.eps_p_f_d['v'], ti=M.vivax_ti)
+        M.use_step_method(GPEvaluationGibbs, M.spatial_vars[k]['sp_sub'], M.spatial_vars[k]['V'], M.eps_p_f[k], ti=M.duffy_ti)
+    M.use_step_method(GPEvaluationGibbs, M.spatial_vars['v']['sp_sub'], M.spatial_vars['v']['V'], M.eps_p_f['v'], ti=M.vivax_ti)
     
     scalar_s = {'v': [], 'b': [], '0': []}
     for s in M.stochastics:
         suffix = s.__name__[-1]
-        if np.alen(s.value)==1 and s.dtype!=np.dtype('object') and np.all([s not in M.eps_p_f_d[k] for k in ['b','0','v']]) and suffix in ['b','v','0'] and s.__name__[0] != 'V':
+        if np.alen(s.value)==1 and s.dtype!=np.dtype('object') and suffix in ['b','v','0']:
             scalar_s[suffix].append(s)
     
-    M.use_step_method(pm.AdaptiveMetropolis, [getattr(M, 'V_'+suffix) for suffix in ['b','0','v']], delay=10000, interval=1000)
+    M.use_step_method(pm.AdaptiveMetropolis, [M.spatial_vars[suffix]['V'] for suffix in ['b','0','v']], delay=10000, interval=1000)
     
     for suffix in ['v','b','0']:
         M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s[suffix], delay=10000, interval=1000)
         M.step_method_dict[scalar_s[suffix][0]][0].proposal_sd *= .1
     
-    loc_chunks = []
-    for loc_ in M.duffy_data_mesh:
-        loc = tuple(loc_)
-        loc_chunk = set()
-        duffy_i = M.loc_chunks['b0'].get(loc,None)
-        vivax_i = M.loc_chunks['v'].get(loc,None)
-        if duffy_i:
-            loc_chunk |= set([M.eps_p_f_d['b'][duffy_i], M.eps_p_f_d['0'][duffy_i]])
-        if vivax_i:
-            loc_chunk |= set([M.eps_p_f_d['v'][vivax_i]])
-            
-        for lc in loc_chunks:
-            if lc.intersection(loc_chunk):
-                lc |= loc_chunk
-                loc_chunk = None
-                break
-        
-        if loc_chunk:
-            loc_chunks.append(loc_chunk)
-        
-        
-    for lc in loc_chunks:    
-        M.use_step_method(pm.AdaptiveMetropolis, list(lc), delay=10000, interval=1000)
+    for g in M.eps_p_f_groups:
+        M.use_step_method(pm.AdaptiveMetropolis, filter(lambda x:x, g.values()), delay=10000, interval=1000)
         
     
     M.assign_step_methods()
     
-    for k,v in M.step_method_dict.iteritems():
-        if len(v)>1:
-            raise ValueError
     # for sm in M.step_method_dict.itervalues():
     #     for smm in sm:
     #         smm._tuning_info=[]

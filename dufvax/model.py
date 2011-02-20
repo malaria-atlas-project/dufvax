@@ -195,6 +195,9 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     duffy_logp_mesh = np.hstack((duffy_logp_mesh, np.atleast_2d(t[duffy_ui]).T))
     vivax_data_mesh, vivax_logp_mesh, vivax_fi, vivax_ui, vivax_ti = uniquify_tol(disttol,ttol,lon[where_vivax],lat[where_vivax],t[where_vivax])
     
+    duffy_data_locs = duffy_data_mesh[:,:2]
+    vivax_data_locs = vivax_data_mesh[:,:2]
+    
     full_vivax_ui = np.arange(len(lon))[where_vivax][vivax_ui]
 
     # Create the mean & its evaluation at the data locations.
@@ -205,8 +208,7 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     
     covariate_key_dict = {'v': set(covariate_keys), 'b': ['africa'], '0':[]}
     ui_dict = {'v': full_vivax_ui, 'b': duffy_ui, '0': duffy_ui}
-    
-    
+        
     logp_mesh_dict = {'b': duffy_logp_mesh, '0': duffy_logp_mesh, 'v': vivax_logp_mesh}
     temporal_dict = {'b': False, '0': False, 'v': True}
     
@@ -214,14 +216,10 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     while not init_OK:
         try:
             spatial_vars = zipmap(lambda k: covariance_submodel(k, ra, logp_mesh_dict[k], covariate_key_dict[k], ui_dict[k], input_data, temporal_dict[k]), ['b','0','v'])
-            sp_sub = zipmap(lambda k: spatial_vars[k]['sp_sub'], ['b','0','v'])
-            sp_sub_b, sp_sub_0, sp_sub_v = [sp_sub[k] for k in ['b','0','v']]
-            V = zipmap(lambda k: spatial_vars[k]['V'], ['b','0','v'])
-            V_b, V_0, V_v = [V[k] for k in ['b','0','v']]
             tau = zipmap(lambda k: 1./spatial_vars[k]['V'], ['b','0','v'])
         
             # Loop over data clusters, adding nugget and applying link function.
-            f = zipmap(lambda k: spatial_vars[k]['sp_sub'].f_eval, ['b','0','v'])
+
             init_OK = True
         except pm.ZeroProbability, msg:
             print 'Trying again: %s'%msg
@@ -232,46 +230,59 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     p_d = {'b':[], '0': [], 'v': []}
     eps_p_f = {}
     eps_p_f_groups = []
+    p_groups = []
     
-    loc_chunks = {'b0': {}, 'v': {}}
-        
-    # Duffy eps_p_f's and p's, eval'ed everywhere.
-    for i in xrange(int(np.ceil(len(n)/float(grainsize)))):
-        for k in ['b','0']:
-            sl = slice(i*grainsize,(i+1)*grainsize,None)                
-            if sl.stop>sl.start:
+    cur_group = {'b0': [],'v':[]}
+    groupmap = []
+    
+    def make_data_group(cur_group):
+        sl = {'b': duffy_fi[cur_group['b0']], '0': duffy_fi[cur_group['b0']], 'v': vivax_fi[cur_group['v']]}
+        ge = {}
+        gp= {}
+        fs = {}
+
+        for k in ['b','0','v']:
+            if len(sl[k])==0:
+                ge[k] = None
+                gp[k] = None
+                continue
+            fs[k] = spatial_vars[k]['sp_sub'].f_eval[sl[k]]
             
-                this_f = f[k][duffy_fi[sl]]
+            eps_p_f_d[k].append(pm.Normal('eps_p_f%s_%i'%(k,len(eps_p_f_d[k])), fs[k], tau[k], value=np.random.normal(size=len(sl[k])), trace=False))
+            p_d[k].append(pm.Lambda('p%s_%i'%(k,len(eps_p_f_d[k])),lambda lt=eps_p_f_d[k][-1]: invlogit(np.atleast_1d(lt)),trace=False))
+            ge[k] = eps_p_f_d[k][-1] 
+            gp[k] = p_d[k][-1]
 
-                # Nuggeted field in this cluster
-                eps_p_f_d[k].append(pm.Normal('eps_p_f%s_%i'%(k,i), this_f, tau[k], value=np.random.normal(size=np.shape(this_f.value)), trace=False))
-        
-                # The allele frequency
-                p_d[k].append(pm.Lambda('p%s_%i'%(k,i),lambda lt=eps_p_f_d[k][-1]: invlogit(np.atleast_1d(lt)),trace=False))
-            for loc in duffy_data_mesh[sl]:
-                loc_chunks['b0'][tuple(loc)] = i
+        if len(sl['v'])>0:
+            duffy_locs_here = set(map(tuple, duffy_logp_mesh[fs['b'].parents['index']][:,:2]))
+            vivax_locs_here = set(map(tuple, vivax_logp_mesh[fs['v'].parents['index']][:,:2]))
+            if not duffy_locs_here.issuperset(vivax_locs_here):
+                raise RuntimeError
+            
+        eps_p_f_groups.append(ge)
+        p_groups.append(gp)
+            
+    for i_b0,loc_ in enumerate(duffy_data_locs):
 
-    for k in ['b','0']:
+        cur_group['b0'].append(i_b0)
+        groupmap.append({'groupnum': len(eps_p_f_groups), 'b0_index': len(cur_group['b0'])-1, 'v_index': None})
+
+        where_eq = np.where((vivax_data_locs==loc_).prod(axis=1))
+
+        if len(where_eq[0])>0:
+            cur_group['v'].extend(list(where_eq[0]))
+            # vivax_data_locs.remove(cur_group['v'][-1])
+            groupmap[-1]['v_index']=len(cur_group['v'])-1
+
+        if len(cur_group['v'])+2*len(cur_group['b0'])>=grainsize:
+            make_data_group(cur_group)
+            cur_group = {'b0': [],'v': []}
+    
+    make_data_group(cur_group)
+    
+    for k in ['b','0','v']:
         # The fields plus the nugget
         eps_p_f[k] = pm.Lambda('eps_p_f%s'%k, lambda eps_p_f_d=eps_p_f_d[k]: np.hstack(eps_p_f_d))
-        
-    # Vivax eps_p_f's and p's, only eval'ed on vivax points.
-    for i in xrange(int(np.ceil(len(n[where_vivax])/float(grainsize)))):
-        sl = slice(i*grainsize,(i+1)*grainsize,None)                
-        if sl.stop>sl.start:
-        
-            this_f = f['v'][vivax_fi[sl]]
-
-            # Nuggeted field in this cluster
-            eps_p_f_d['v'].append(pm.Normal('eps_p_fv_%i'%i, this_f, tau['v'], value=np.random.normal(size=np.shape(this_f.value)), trace=False))
-    
-            # The allele frequency
-            p_d['v'].append(pm.Lambda('p%s_%i'%(k,i),lambda lt=eps_p_f_d['v'][-1]: invlogit(np.atleast_1d(lt)),trace=False))
-        for loc in vivax_data_mesh[sl]:
-            loc_chunks['v'][tuple(loc)] = i
-
-    # The fields plus the nugget
-    eps_p_f['v'] = pm.Lambda('eps_p_fv', lambda eps_p_f_d=eps_p_f_d['v']: np.hstack(eps_p_f_d))    
 
     # The likelihoods.
     data_d = []    
@@ -284,14 +295,11 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     
     for i in xrange(len(n)):
 
-        sl_ind = int(i/grainsize)
-        sub_ind = i%grainsize
-        
-        if sl_ind == len(p_d['b']):
-            break
+        groupnum, b0_index, v_index = groupmap[i]['groupnum'], groupmap[i]['b0_index'], groupmap[i]['v_index']
         
         # See duffy/doc/model.tex for explanations of the likelihoods.
-        pb,p0 = map(lambda k: p_d[k][sl_ind][sub_ind], ['b','0'])
+        pb,p0 = p_groups[groupnum]['b'][b0_index], p_groups[groupnum]['0'][b0_index]
+        pv = None
         
         if datatype[i]=='prom':
             cur_obs = [prom0[i], promab[i]]
@@ -337,11 +345,8 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
             # Since the vivax 'p' uses a different indexing system,
             # figure out which element of vivax 'p' to grab to correspond
             # to the i'th row of the datafile.
-            i_vivax = np.where(where_vivax[0]==i)[0][0]
-            sl_ind_vivax = int(i_vivax/grainsize)
-            sub_ind_vivax = i_vivax%grainsize
-            pv = p_d['v'][sl_ind_vivax][sub_ind_vivax]
-            
+            pv = p_groups[groupnum]['v'][v_index]
+            i_vivax = 0
             cur_obs = np.array([vivax_pos[i], vivax_neg[i]])
             
             pphe0 = pm.Lambda('pphe0_%i'%i, lambda pb=pb, p0=p0, p1=p1: (g_freqs['00'](pb,p0,p1)+g_freqs['01'](pb,p0,p1)+g_freqs['11'](pb,p0,p1)), trace=False)
