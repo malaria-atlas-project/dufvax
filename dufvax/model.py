@@ -234,7 +234,7 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     locs_sofar = set()
     cur_group = {'b': [], 'v': [], '0': []}
     indexmap = {'b0': [None]*len(duffy_data_locs), 'v': [None]*len(duffy_data_locs)}
-    
+
     # Take a chunk of locations and extract eps_p_f and p variables for the three
     # fields there. 
     def make_data_group(cur_group, index):
@@ -253,15 +253,41 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
             f_now = spatial_vars[k]['sp_sub'].f_eval[logp_indices]
             group[k]['eps_p_f'] = pm.Normal('eps_p_f_%s_%i'%(k,index), f_now, tau[k], value=np.random.normal(size=len(logp_indices)), trace=False)
             group[k]['p'] = pm.InvLogit('p_%s_%i'%(k,index), group[k]['eps_p_f'], trace=False)
-            
+
         return group
-    
+
     # Break the data into groups, guaranteeing that all colocated points are
     # in the same group.
-    ulocs = list(set(duffy_data_locs))
-    for loc in ulocs:
-        where_here = np.where([ddl==loc for ddl in duffy_data_locs])[0]
-        for j in where_here:
+    all_associations = map(set, duffy_ti) + map(set, vivax_ti)
+    def get_cluster(i, aa=all_associations):
+        c = set([i])
+        for a in aa:
+            if len(c.intersection(a))>0:
+                c |= a
+        return c
+        
+    max_associations = []
+    for i in xrange(len(duffy_data_mesh)):
+        ma = get_cluster(i)
+        lenchange = True
+        while lenchange:
+            next_ma = reduce(lambda x,y: x.union(y), map(get_cluster, ma))
+            lenchange = len(next_ma) > len(ma)
+            ma = next_ma
+
+        if not ma in max_associations:
+            max_associations.append(ma)
+            
+    # No repeats?
+    if np.sum(map(len, max_associations)) != len(duffy_data_mesh):
+        raise RuntimeError
+        
+    # All in?
+    if len(reduce(lambda x,y: x.union(y), max_associations)) != len(duffy_data_mesh):
+        raise RuntimeError
+        
+    for ma in max_associations:
+        for j in ma:
             indexmap['b0'][j] = len(eps_p_f_groups), len(cur_group['0'])            
             cur_group['b'].append(j)
             cur_group['0'].append(j)
@@ -270,13 +296,14 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
                 indexmap['v'][j] = len(eps_p_f_groups), len(cur_group['v'])                
                 cur_group['v'].append(np.where(where_vivax[0]==j)[0][0])
                 
-        if len(cur_group['0'])*2+len(cur_group['v']) >= grainsize or loc==ulocs[-1]:
+        if len(cur_group['0'])*2+len(cur_group['v']) >= grainsize or ma==max_associations[-1]:
             new_group = make_data_group(cur_group, len(eps_p_f_groups))
             cur_group = {'b': [], 'v': [], '0': []}
             for k in ['b','0','v']:
-                eps_p_f_d[k].append(new_group[k]['eps_p_f'])
+                if new_group[k]['eps_p_f'] is not None:
+                    eps_p_f_d[k].append(new_group[k]['eps_p_f'])
                 p_d[k].append(new_group[k]['p'])
-            eps_p_f_groups.append([new_group[k]['eps_p_f'] for k in ['b','0','v']])
+            eps_p_f_groups.append(filter(lambda x:x, [new_group[k]['eps_p_f'] for k in ['b','0','v']]))
     
     for k in ['b','0','v']:
         # The fields plus the nugget
@@ -347,7 +374,10 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
             pv = p_d['v'][groupnum][v_index]
 
             if np.any(vivax_logp_mesh[pv.parents['x'].parents['ltheta'].parents['mu'].parents['index'][v_index]] != duffy_data_mesh[i]):
-                raise Runtime
+                raise RuntimeError
+            
+                if np.any(vivax_logp_mesh[pv.parents['x'].parents['ltheta'].parents['mu'].parents['index'][v_index]] != duffy_data_mesh[i]):
+                    raise RuntimeError
             
             cur_obs = np.array([vivax_pos[i], vivax_neg[i]])
             
@@ -367,9 +397,12 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
         if np.any(np.isnan(cur_obs)):
             raise ValueError
     
+    # One-to-one correspondence between locations and data?
     for k in ['b','0','v']:
-        if np.any(np.array([len(epf.extended_children) for epf in eps_p_f_d[k]])==0):
-            raise RuntimeError
+        for epf in eps_p_f_d[k]:
+            if epf is not None:
+                if len(epf.value) != len(epf.extended_children):
+                    raise RuntimeError
         
     
     return locals()

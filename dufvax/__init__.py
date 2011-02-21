@@ -164,9 +164,10 @@ def mcmc_init(M):
     
     M.assign_step_methods()
     
+    # One and only one step method per nuggeted field evaluation?
     for k in ['b','v','0']:
         for epf in M.eps_p_f_d[k]:
-            if len(M.step_method_dict[epf])>1:
+            if len(M.step_method_dict[epf])!=1:
                 raise ValueError    
     
     # for sm in M.step_method_dict.itervalues():
