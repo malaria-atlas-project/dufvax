@@ -195,8 +195,8 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     duffy_logp_mesh = np.hstack((duffy_logp_mesh, np.atleast_2d(t[duffy_ui]).T))
     vivax_data_mesh, vivax_logp_mesh, vivax_fi, vivax_ui, vivax_ti = uniquify_tol(disttol,ttol,lon[where_vivax],lat[where_vivax],t[where_vivax])
     
-    duffy_data_locs = duffy_data_mesh[:,:2]
-    vivax_data_locs = vivax_data_mesh[:,:2]
+    duffy_data_locs = map(tuple,duffy_data_mesh[:,:2])
+    vivax_data_locs = map(tuple,vivax_data_mesh[:,:2])
     
     full_vivax_ui = np.arange(len(lon))[where_vivax][vivax_ui]
 
@@ -231,54 +231,52 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     eps_p_f = {}
     eps_p_f_groups = []
     p_groups = []
+    locs_sofar = set()
+    cur_group = {'b': [], 'v': [], '0': []}
+    indexmap = {'b0': [None]*len(duffy_data_locs), 'v': [None]*len(duffy_data_locs)}
     
-    cur_group = {'b0': [],'v':[]}
-    groupmap = []
-    
-    def make_data_group(cur_group):
-        sl = {'b': duffy_fi[cur_group['b0']], '0': duffy_fi[cur_group['b0']], 'v': vivax_fi[cur_group['v']]}
-        ge = {}
-        gp= {}
-        fs = {}
+    # Take a chunk of locations and extract eps_p_f and p variables for the three
+    # fields there. 
+    def make_data_group(cur_group, index):
+        group = {'b': {'p': None, 'eps_p_f': None}, 
+                 '0': {'p': None, 'eps_p_f': None},
+                 'v': {'p': None, 'eps_p_f': None}}
 
         for k in ['b','0','v']:
-            if len(sl[k])==0:
-                ge[k] = None
-                gp[k] = None
+            if len(cur_group[k])==0:
+                group[k]['eps_p_f']=group[k]['p']=None
                 continue
-            fs[k] = spatial_vars[k]['sp_sub'].f_eval[sl[k]]
+            if k=='v':
+                logp_indices = vivax_fi[cur_group['v']]
+            else:
+                logp_indices = duffy_fi[cur_group[k]]
+            f_now = spatial_vars[k]['sp_sub'].f_eval[logp_indices]
+            group[k]['eps_p_f'] = pm.Normal('eps_p_f_%s_%i'%(k,index), f_now, tau[k], value=np.random.normal(size=len(logp_indices)), trace=False)
+            group[k]['p'] = pm.InvLogit('p_%s_%i'%(k,index), group[k]['eps_p_f'], trace=False)
             
-            eps_p_f_d[k].append(pm.Normal('eps_p_f%s_%i'%(k,len(eps_p_f_d[k])), fs[k], tau[k], value=np.random.normal(size=len(sl[k])), trace=False))
-            p_d[k].append(pm.Lambda('p%s_%i'%(k,len(eps_p_f_d[k])),lambda lt=eps_p_f_d[k][-1]: invlogit(np.atleast_1d(lt)),trace=False))
-            ge[k] = eps_p_f_d[k][-1] 
-            gp[k] = p_d[k][-1]
-
-        if len(sl['v'])>0:
-            duffy_locs_here = set(map(tuple, duffy_logp_mesh[fs['b'].parents['index']][:,:2]))
-            vivax_locs_here = set(map(tuple, vivax_logp_mesh[fs['v'].parents['index']][:,:2]))
-            if not duffy_locs_here.issuperset(vivax_locs_here):
-                raise RuntimeError
-            
-        eps_p_f_groups.append(ge)
-        p_groups.append(gp)
-            
-    for i_b0,loc_ in enumerate(duffy_data_locs):
-
-        cur_group['b0'].append(i_b0)
-        groupmap.append({'groupnum': len(eps_p_f_groups), 'b0_index': len(cur_group['b0'])-1, 'v_index': None})
-
-        where_eq = np.where((vivax_data_locs==loc_).prod(axis=1))
-
-        if len(where_eq[0])>0:
-            cur_group['v'].extend(list(where_eq[0]))
-            # vivax_data_locs.remove(cur_group['v'][-1])
-            groupmap[-1]['v_index']=len(cur_group['v'])-1
-
-        if len(cur_group['v'])+2*len(cur_group['b0'])>=grainsize:
-            make_data_group(cur_group)
-            cur_group = {'b0': [],'v': []}
+        return group
     
-    make_data_group(cur_group)
+    # Break the data into groups, guaranteeing that all colocated points are
+    # in the same group.
+    ulocs = list(set(duffy_data_locs))
+    for loc in ulocs:
+        where_here = np.where([ddl==loc for ddl in duffy_data_locs])[0]
+        for j in where_here:
+            indexmap['b0'][j] = len(eps_p_f_groups), len(cur_group['0'])            
+            cur_group['b'].append(j)
+            cur_group['0'].append(j)
+            
+            if datatype[j] == 'vivax':
+                indexmap['v'][j] = len(eps_p_f_groups), len(cur_group['v'])                
+                cur_group['v'].append(np.where(where_vivax[0]==j)[0][0])
+                
+        if len(cur_group['0'])*2+len(cur_group['v']) >= grainsize or loc==ulocs[-1]:
+            new_group = make_data_group(cur_group, len(eps_p_f_groups))
+            cur_group = {'b': [], 'v': [], '0': []}
+            for k in ['b','0','v']:
+                eps_p_f_d[k].append(new_group[k]['eps_p_f'])
+                p_d[k].append(new_group[k]['p'])
+            eps_p_f_groups.append([new_group[k]['eps_p_f'] for k in ['b','0','v']])
     
     for k in ['b','0','v']:
         # The fields plus the nugget
@@ -295,11 +293,10 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     
     for i in xrange(len(n)):
 
-        groupnum, b0_index, v_index = groupmap[i]['groupnum'], groupmap[i]['b0_index'], groupmap[i]['v_index']
-        
+        groupnum, b0_index = indexmap['b0'][i]
+    
         # See duffy/doc/model.tex for explanations of the likelihoods.
-        pb,p0 = p_groups[groupnum]['b'][b0_index], p_groups[groupnum]['0'][b0_index]
-        pv = None
+        pb,p0 = p_d['b'][groupnum][b0_index], p_d['0'][groupnum][b0_index]
         
         if datatype[i]=='prom':
             cur_obs = [prom0[i], promab[i]]
@@ -345,8 +342,13 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
             # Since the vivax 'p' uses a different indexing system,
             # figure out which element of vivax 'p' to grab to correspond
             # to the i'th row of the datafile.
-            pv = p_groups[groupnum]['v'][v_index]
-            i_vivax = 0
+
+            groupnum, v_index = indexmap['v'][i]
+            pv = p_d['v'][groupnum][v_index]
+
+            if np.any(vivax_logp_mesh[pv.parents['x'].parents['ltheta'].parents['mu'].parents['index'][v_index]] != duffy_data_mesh[i]):
+                raise Runtime
+            
             cur_obs = np.array([vivax_pos[i], vivax_neg[i]])
             
             pphe0 = pm.Lambda('pphe0_%i'%i, lambda pb=pb, p0=p0, p1=p1: (g_freqs['00'](pb,p0,p1)+g_freqs['01'](pb,p0,p1)+g_freqs['11'](pb,p0,p1)), trace=False)
@@ -355,7 +357,7 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
                 warnings.warn('Not using age correction')
                 @pm.observed
                 @pm.stochastic(name='data_%i'%i,dtype=np.int)
-                def d_now(value = vivax_pos[i], splrep = splreps[i_vivax], p = p, n = np.sum(cur_obs)):
+                def d_now(value = vivax_pos[i], splrep = None, p = p, n = np.sum(cur_obs)):
                     return pm.binomial_like(x=value, n=n, p=p)
                     # return interp.splev(p, splrep)
             except ValueError:
@@ -364,5 +366,10 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
             
         if np.any(np.isnan(cur_obs)):
             raise ValueError
+    
+    for k in ['b','0','v']:
+        if np.any(np.array([len(epf.extended_children) for epf in eps_p_f_d[k]])==0):
+            raise RuntimeError
+        
     
     return locals()

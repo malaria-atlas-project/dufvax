@@ -160,10 +160,14 @@ def mcmc_init(M):
         M.step_method_dict[scalar_s[suffix][0]][0].proposal_sd *= .1
     
     for g in M.eps_p_f_groups:
-        M.use_step_method(pm.AdaptiveMetropolis, filter(lambda x:x, g.values()), delay=10000, interval=1000)
-        
+        M.use_step_method(pm.AdaptiveMetropolis, g, delay=10000, interval=1000)
     
     M.assign_step_methods()
+    
+    for k in ['b','v','0']:
+        for epf in M.eps_p_f_d[k]:
+            if len(M.step_method_dict[epf])>1:
+                raise ValueError    
     
     # for sm in M.step_method_dict.itervalues():
     #     for smm in sm:
