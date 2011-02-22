@@ -110,7 +110,7 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
         # covfacs are uniformly distributed on [0,1]        
         covfacs = pm.Lambda('covfacs_%s'%suffix, lambda x=log_covfacs: np.exp(x))
 
-        @pm.deterministic(trace=True,name='C_%s'%suffix)
+        @pm.deterministic(trace=False,name='C_%s'%suffix)
         def C(amp=amp,scale=scale,inc=inc,ecc=ecc,scale_t=scale_t, t_lim_corr=t_lim_corr, sin_frac=sin_frac, diff_degree=diff_degree, covfacs=covfacs, covariate_keys=covariate_keys, ra=ra, mesh=mesh, ui=ui):
             facdict = dict([(k,1.e2*covfacs[i]) for i,k in enumerate(covariate_keys)])
             facdict['m'] = 1.e6
@@ -119,13 +119,13 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
                                             
     else:
         # Create the covariance & its evaluation at the data locations.
-        @pm.deterministic(trace=True,name='C_%s'%suffix)
+        @pm.deterministic(trace=False,name='C_%s'%suffix)
         def C(amp=amp, scale=scale, diff_degree=diff_degree, covariate_keys=covariate_keys, ra=ra, mesh=mesh, ui=ui):
             eval_fun = CovarianceWithCovariates(strip_time(pm.gp.matern.geo_rad), fname, covariate_keys, ui, fac=1.e4, ra=ra)
             return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, diff_degree=diff_degree)
     
     # Create the mean function    
-    @pm.deterministic(trace=True, name='M_%s'%suffix)
+    @pm.deterministic(trace=False, name='M_%s'%suffix)
     def M():
         return pm.gp.Mean(pm.gp.zero_fn)
     
