@@ -153,9 +153,9 @@ g_freqs = {}
 for i in xrange(4):
     for j in xrange(i,4):
         if i != j:
-            g_freqs[hfk[i]+hfk[j]] = lambda pb, p0, p1, i=i, j=j: 2 * np.asscalar(hfv[i](pb,p0,p1) * hfv[j](pb,p0,p1))
+            g_freqs[hfk[i]+hfk[j]] = lambda pb, p0, p1, i=i, j=j: 2 * hfv[i](pb,p0,p1) * hfv[j](pb,p0,p1)
         else:
-            g_freqs[hfk[i]*2] = lambda pb, p0, p1, i=i: np.asscalar(hfv[i](pb,p0,p1))**2
+            g_freqs[hfk[i]*2] = lambda pb, p0, p1, i=i: hfv[i](pb,p0,p1)**2
             
 for i in xrange(1000):
     pb,p0,p1 = np.random.random(size=3)
@@ -190,10 +190,13 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     # Vivax only needs to be modelled where Vivax is observed.
     # Complication: Vivax can have multiple co-located observations at different times,
     # all corresponding to the same Duffy observation.
+    print 'Uniquifying.'
     duffy_data_mesh, duffy_logp_mesh, duffy_fi, duffy_ui, duffy_ti = uniquify_tol(disttol,ttol,lon,lat)
     duffy_data_mesh = np.hstack((duffy_data_mesh, np.atleast_2d(t).T))
     duffy_logp_mesh = np.hstack((duffy_logp_mesh, np.atleast_2d(t[duffy_ui]).T))
     vivax_data_mesh, vivax_logp_mesh, vivax_fi, vivax_ui, vivax_ti = uniquify_tol(disttol,ttol,lon[where_vivax],lat[where_vivax],t[where_vivax])
+    
+    print 'Done uniquifying.'
     
     duffy_data_locs = map(tuple,duffy_data_mesh[:,:2])
     vivax_data_locs = map(tuple,vivax_data_mesh[:,:2])
@@ -219,98 +222,24 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
             tau = zipmap(lambda k: 1./spatial_vars[k]['V'], ['b','0','v'])
         
             # Loop over data clusters, adding nugget and applying link function.
-
             init_OK = True
         except pm.ZeroProbability, msg:
             print 'Trying again: %s'%msg
             init_OK = False
             gc.collect()        
 
-    eps_p_f_d = {'b':[], '0':[], 'v':[]}
-    p_d = {'b':[], '0': [], 'v': []}
     eps_p_f = {}
-    eps_p_f_groups = []
-    p_groups = []
-    locs_sofar = set()
-    cur_group = {'b': [], 'v': [], '0': []}
-    indexmap = {'b0': [None]*len(duffy_data_locs), 'v': [None]*len(duffy_data_locs)}
-
-    # Take a chunk of locations and extract eps_p_f and p variables for the three
-    # fields there. 
-    def make_data_group(cur_group, index):
-        group = {'b': {'p': None, 'eps_p_f': None}, 
-                 '0': {'p': None, 'eps_p_f': None},
-                 'v': {'p': None, 'eps_p_f': None}}
-
-        for k in ['b','0','v']:
-            if len(cur_group[k])==0:
-                group[k]['eps_p_f']=group[k]['p']=None
-                continue
-            if k=='v':
-                logp_indices = vivax_fi[cur_group['v']]
-            else:
-                logp_indices = duffy_fi[cur_group[k]]
-            f_now = spatial_vars[k]['sp_sub'].f_eval[logp_indices]
-            group[k]['eps_p_f'] = pm.Normal('eps_p_f_%s_%i'%(k,index), f_now, tau[k], value=np.random.normal(size=len(logp_indices)), trace=False)
-            group[k]['p'] = pm.InvLogit('p_%s_%i'%(k,index), group[k]['eps_p_f'], trace=False)
-
-        return group
-
-    # Break the data into groups, guaranteeing that all colocated points are
-    # in the same group.
-    all_associations = map(set, duffy_ti) + map(set, vivax_ti)
-    def get_cluster(i, aa=all_associations):
-        c = set([i])
-        for a in aa:
-            if len(c.intersection(a))>0:
-                c |= a
-        return c
-        
-    max_associations = []
-    for i in xrange(len(duffy_data_mesh)):
-        ma = get_cluster(i)
-        lenchange = True
-        while lenchange:
-            next_ma = reduce(lambda x,y: x.union(y), map(get_cluster, ma))
-            lenchange = len(next_ma) > len(ma)
-            ma = next_ma
-
-        if not ma in max_associations:
-            max_associations.append(ma)
-            
-    # No repeats?
-    if np.sum(map(len, max_associations)) != len(duffy_data_mesh):
-        raise RuntimeError
-        
-    # All in?
-    if len(reduce(lambda x,y: x.union(y), max_associations)) != len(duffy_data_mesh):
-        raise RuntimeError
-        
-    for ma in max_associations:
-        for j in ma:
-            indexmap['b0'][j] = len(eps_p_f_groups), len(cur_group['0'])            
-            cur_group['b'].append(j)
-            cur_group['0'].append(j)
-            
-            if datatype[j] == 'vivax':
-                indexmap['v'][j] = len(eps_p_f_groups), len(cur_group['v'])                
-                cur_group['v'].append(np.where(where_vivax[0]==j)[0][0])
-                
-        if len(cur_group['0'])*2+len(cur_group['v']) >= grainsize or ma==max_associations[-1]:
-            new_group = make_data_group(cur_group, len(eps_p_f_groups))
-            cur_group = {'b': [], 'v': [], '0': []}
-            for k in ['b','0','v']:
-                if new_group[k]['eps_p_f'] is not None:
-                    eps_p_f_d[k].append(new_group[k]['eps_p_f'])
-                p_d[k].append(new_group[k]['p'])
-            eps_p_f_groups.append(filter(lambda x:x, [new_group[k]['eps_p_f'] for k in ['b','0','v']]))
+    p = {}
     
     for k in ['b','0','v']:
-        # The fields plus the nugget
-        eps_p_f[k] = pm.Lambda('eps_p_f%s'%k, lambda eps_p_f_d=eps_p_f_d[k]: np.hstack(eps_p_f_d))
-
-    # The likelihoods.
-    data_d = []    
+        if k=='v':
+            fi = vivax_fi
+        else:
+            fi = duffy_fi
+        eps_p_f[k] = pm.Normal('eps_p_f_%s'%k, spatial_vars[k]['sp_sub'].f_eval[fi], tau[k], value=np.random.normal(size=len(fi)))
+        p[k] = pm.InvLogit('p_%s'%k, eps_p_f[k], trace=False)
+    
+    pb, p0, pv = p['b'], p['0'], p['v']
     
     warnings.warn('Not using age correction')
     # junk, splreps = age_corr_likelihoods(lo_age[where_vivax], up_age[where_vivax], vivax_pos[where_vivax], vivax_neg[where_vivax], 10000, np.arange(.01,1.,.01), a_pred, P_trace, S_trace, F_trace)
@@ -318,91 +247,61 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     #     splreps[i] = list(splreps[i])
     splreps = [None]*len(where_vivax[0])
     
-    for i in xrange(len(n)):
-
-        groupnum, b0_index = indexmap['b0'][i]
+    where_prom = np.where(datatype=='prom')
+    cur_obs = np.array([prom0[where_prom], promab[where_prom]]).T
+    # Need to have either b and 0 or a and 1 on both chromosomes
+    p_prom = pm.Lambda('p_prom', lambda pb=pb[where_prom], p0=p0[where_prom], p1=p1: (pb*p0+(1-pb)*p1)**2, trace=False)
+    n = np.sum(cur_obs,axis=1)
+    data_prom = pm.Binomial('data_prom', p=p_prom, n=n, value=prom0[where_prom], observed=True)
+        
+    where_aphe = np.where(datatype=='aphe')
+    cur_obs = np.array([aphea[where_aphe], aphe0[where_aphe]]).T
+    n = np.sum(cur_obs, axis=1)
+    # Need to have (a and not 1) on either chromosome, or not (not (a and not 1) on both chromosomes)
+    p_aphe = pm.Lambda('p_aphe', lambda pb=pb[where_aphe], p0=p0[where_aphe], p1=p1: 1-(1-(1-pb)*(1-p1))**2, trace=False)
+    data_aphe = pm.Binomial('data_aphe', p=p_aphe, n=n, value=aphea[where_aphe], observed=True)
+        
+    where_bphe = np.where(datatype=='bphe')
+    cur_obs = np.array([bpheb[where_bphe], bphe0[where_bphe]]).T
+    n = np.sum(cur_obs, axis=1)
+    # Need to have (b and not 0) on either chromosome
+    p_bphe = pm.Lambda('p_bphe', lambda pb=pb[where_bphe], p0=p0[where_bphe], p1=p1: 1-(1-pb*(1-p0))**2, trace=False)
+    data_bphe = pm.Binomial('data_bphe', p=p_bphe, n=n, value=bpheb[where_bphe], observed=True)
+        
+    where_phe = np.where(datatype=='phe')
+    cur_obs = np.array([pheab[where_phe],phea[where_phe],pheb[where_phe],phe0[where_phe]]).T
+    n = np.sum(cur_obs, axis=1)
+    p_phe = pm.Lambda('p_%i'%i, lambda pb=pb[where_phe], p0=p0[where_phe], p1=p1: np.array([\
+        g_freqs['ab'](pb,p0,p1),
+        g_freqs['a0'](pb,p0,p1)+g_freqs['a1'](pb,p0,p1)+g_freqs['aa'](pb,p0,p1),
+        g_freqs['b0'](pb,p0,p1)+g_freqs['b1'](pb,p0,p1)+g_freqs['bb'](pb,p0,p1),
+        g_freqs['00'](pb,p0,p1)+g_freqs['01'](pb,p0,p1)+g_freqs['11'](pb,p0,p1)]).T, trace=False)
+    np.testing.assert_almost_equal(p_phe.value.sum(axis=1), 1)
+    data_phe = pm.Multinomial('data_phe', p=p_phe, n=n, value=cur_obs, observed=True)    
     
-        # See duffy/doc/model.tex for explanations of the likelihoods.
-        pb,p0 = p_d['b'][groupnum][b0_index], p_d['0'][groupnum][b0_index]
-        
-        if datatype[i]=='prom':
-            cur_obs = [prom0[i], promab[i]]
-            # Need to have either b and 0 or a and 1 on both chromosomes
-            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1: (pb*p0+(1-pb)*p1)**2, trace=False)
-            n = np.sum(cur_obs)
-            data_d.append(pm.Binomial('data_%i'%i, p=p, n=n, value=prom0[i], observed=True))
-            
-        elif datatype[i]=='aphe':
-            cur_obs = [aphea[i], aphe0[i]]
-            n = np.sum(cur_obs)
-            # Need to have (a and not 1) on either chromosome, or not (not (a and not 1) on both chromosomes)
-            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1: 1-(1-(1-pb)*(1-p1))**2, trace=False)
-            data_d.append(pm.Binomial('data_%i'%i, p=p, n=n, value=aphea[i], observed=True))
-            
-        elif datatype[i]=='bphe':
-            cur_obs = [bpheb[i], bphe0[i]]
-            n = np.sum(cur_obs)
-            # Need to have (b and not 0) on either chromosome
-            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1: 1-(1-pb*(1-p0))**2, trace=False)
-            data_d.append(pm.Binomial('data_%i'%i, p=p, n=n, value=aphea[i], observed=True))            
-            
-        elif datatype[i]=='phe':
-            cur_obs = np.array([pheab[i],phea[i],pheb[i],phe0[i]])
-            n = np.sum(cur_obs)
-            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1: np.array([\
-                g_freqs['ab'](pb,p0,p1),
-                g_freqs['a0'](pb,p0,p1)+g_freqs['a1'](pb,p0,p1)+g_freqs['aa'](pb,p0,p1),
-                g_freqs['b0'](pb,p0,p1)+g_freqs['b1'](pb,p0,p1)+g_freqs['bb'](pb,p0,p1),
-                g_freqs['00'](pb,p0,p1)+g_freqs['01'](pb,p0,p1)+g_freqs['11'](pb,p0,p1)]), trace=False)
-            np.testing.assert_almost_equal(p.value.sum(), 1)
-            data_d.append(pm.Multinomial('data_%i'%i, p=p, n=n, value=cur_obs, observed=True))
-            
-        elif datatype[i]=='gen':
-            cur_obs = np.array([genaa[i],genab[i],gena0[i],gena1[i],genbb[i],genb0[i],genb1[i],gen00[i],gen01[i],gen11[i]])
-            n = np.sum(cur_obs)
-            p = pm.Lambda('p_%i'%i, lambda pb=pb, p0=p0, p1=p1, g_freqs=g_freqs: \
-                np.array([g_freqs[key](pb,p0,p1) for key in ['aa','ab','a0','a1','bb','b0','b1','00','01','11']]), trace=False)
-            np.testing.assert_almost_equal(p.value.sum(), 1)
-            data_d.append(pm.Multinomial('data_%i'%i, p=p, n=n, value=cur_obs, observed=True))
-        
-        elif datatype[i]=='vivax':
-            # Since the vivax 'p' uses a different indexing system,
-            # figure out which element of vivax 'p' to grab to correspond
-            # to the i'th row of the datafile.
-
-            groupnum, v_index = indexmap['v'][i]
-            pv = p_d['v'][groupnum][v_index]
-
-            if np.any(vivax_logp_mesh[pv.parents['x'].parents['ltheta'].parents['mu'].parents['index'][v_index]] != duffy_data_mesh[i]):
-                raise RuntimeError
-            
-                if np.any(vivax_logp_mesh[pv.parents['x'].parents['ltheta'].parents['mu'].parents['index'][v_index]] != duffy_data_mesh[i]):
-                    raise RuntimeError
-            
-            cur_obs = np.array([vivax_pos[i], vivax_neg[i]])
-            
-            pphe0 = pm.Lambda('pphe0_%i'%i, lambda pb=pb, p0=p0, p1=p1: (g_freqs['00'](pb,p0,p1)+g_freqs['01'](pb,p0,p1)+g_freqs['11'](pb,p0,p1)), trace=False)
-            p = pm.Lambda('p_%i'%i, lambda pphe0=pphe0, pv=pv: pv*(1-pphe0), trace=False)
-            try:
-                warnings.warn('Not using age correction')
-                @pm.observed
-                @pm.stochastic(name='data_%i'%i,dtype=np.int)
-                def d_now(value = vivax_pos[i], splrep = None, p = p, n = np.sum(cur_obs)):
-                    return pm.binomial_like(x=value, n=n, p=p)
-                    # return interp.splev(p, splrep)
-            except ValueError:
-                raise ValueError, 'Log-likelihood is nan at chunk %i'%i
-            data_d.append(d_now)
-            
-        if np.any(np.isnan(cur_obs)):
-            raise ValueError
+    where_gen = np.where(datatype=='gen')
+    cur_obs = np.array([genaa[where_gen],genab[where_gen],gena0[where_gen],gena1[where_gen],genbb[where_gen],genb0[where_gen],genb1[where_gen],gen00[where_gen],gen01[where_gen],gen11[where_gen]]).T
+    n = np.sum(cur_obs,axis=1)
+    p_gen = pm.Lambda('p_gen', lambda pb=pb[where_gen], p0=p0[where_gen], p1=p1, g_freqs=g_freqs: \
+        np.array([g_freqs[key](pb,p0,p1) for key in ['aa','ab','a0','a1','bb','b0','b1','00','01','11']]).T, trace=False)
+    np.testing.assert_almost_equal(p_gen.value.sum(axis=1), 1)
+    data_gen = pm.Multinomial('data_gen', p=p_gen, n=n, value=cur_obs, observed=True)
     
-    # One-to-one correspondence between locations and data?
-    for k in ['b','0','v']:
-        for epf in eps_p_f_d[k]:
-            if epf is not None:
-                if len(epf.value) != len(epf.extended_children):
-                    raise RuntimeError
+    # Now vivax.
+    cur_obs = np.array([vivax_pos[where_vivax], vivax_neg[where_vivax]]).T
+    pphe0 = pm.Lambda('pphe0_%i'%i, lambda pb=pb[where_vivax], p0=p0[where_vivax], p1=p1: (g_freqs['00'](pb,p0,p1)+g_freqs['01'](pb,p0,p1)+g_freqs['11'](pb,p0,p1)), trace=False)
+    p_vivax = pm.Lambda('p_vivax', lambda pphe0=pphe0, pv=pv: pv*(1-pphe0), trace=False)
+    try:
+        warnings.warn('Not using age correction')
+        @pm.observed
+        @pm.stochastic(dtype=np.int)
+        def data_vivax(value = vivax_pos[where_vivax], splrep = None, p = p_vivax, n = np.sum(cur_obs,axis=1)):
+            return pm.binomial_like(x=value, n=n, p=p)
+    except ValueError:
+        raise ValueError, 'Log-likelihood is nan for vivax.'
         
+    if np.any(np.isnan(cur_obs)):
+        raise ValueError
+            
     
     return locals()

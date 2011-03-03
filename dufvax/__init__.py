@@ -160,22 +160,11 @@ def mcmc_init(M):
         M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s[suffix], delay=10000, interval=1000)
         M.step_method_dict[scalar_s[suffix][0]][0].proposal_sd *= .1
     
-    for g in M.eps_p_f_groups:
-        M.use_step_method(history_steps.HistoryAM, g)
+    
+    M.use_step_method(history_steps.HistoryAM, [M.eps_p_f[k] for k in 'b','0','v']+[M.spatial_vars[k]['V'] for k in 'b','0','v'])
     
     M.assign_step_methods()
     
-    # One and only one step method per nuggeted field evaluation?
-    for k in ['b','v','0']:
-        for epf in M.eps_p_f_d[k]:
-            if len(M.step_method_dict[epf])!=1:
-                raise ValueError    
-    
-    # for sm in M.step_method_dict.itervalues():
-    #     for smm in sm:
-    #         smm._tuning_info=[]
-    #         smm._state = []
-            
 
 non_cov_columns = { 'n': 'int',
                     'datatype': 'str',
