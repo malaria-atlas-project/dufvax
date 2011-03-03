@@ -4,6 +4,7 @@ ttol = 0./12
 
 import tables as tb
 import numpy as np
+import history_steps
 
 modis_covariates = ['raw_data_elevation_geographic_world_version_5','daytime_land_temp_mean_geographic_world_2001_to_2006','daytime_land_temp_annual_amplitude_geographic_world_2001_to_2006','daytime_land_temp_triannual_amplitude_geographic_world_2001_to_2006','daytime_land_temp_biannual_amplitude_geographic_world_2001_to_2006']
 # glob_channels = [11,14,20,30,40,60,110,120,130,140,150,160,170,180,200]
@@ -160,7 +161,7 @@ def mcmc_init(M):
         M.step_method_dict[scalar_s[suffix][0]][0].proposal_sd *= .1
     
     for g in M.eps_p_f_groups:
-        M.use_step_method(pm.AdaptiveMetropolis, g, delay=10000, interval=1000)
+        M.use_step_method(history_steps.HistoryAM, g)
     
     M.assign_step_methods()
     
