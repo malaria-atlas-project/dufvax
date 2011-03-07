@@ -157,11 +157,10 @@ def mcmc_init(M):
         if np.alen(s.value)==1 and s.dtype!=np.dtype('object') and suffix in ['b','v','0']:
             scalar_s[suffix].append(s)
     
-    M.use_step_method(history_steps.HistoryAM, [M.spatial_vars[suffix]['V'] for suffix in ['b','0','v']], delay=10000, interval=1000)
+    M.use_step_method(history_steps.HistoryAM, [M.spatial_vars[suffix]['V'] for suffix in ['b','0','v']])
     
     for suffix in ['v','b','0']:
-        M.use_step_method(GPParentHistoryAM, scalar_s[suffix], delay=10000, interval=1000)
-        M.step_method_dict[scalar_s[suffix][0]][0].proposal_sd *= .1
+        M.use_step_method(GPParentHistoryAM, scalar_s[suffix])
     
     
     M.use_step_method(history_steps.HistoryAM, [M.eps_p_f[k] for k in 'b','0','v']+[M.spatial_vars[k]['V'] for k in 'b','0','v'])
