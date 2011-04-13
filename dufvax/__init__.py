@@ -4,7 +4,7 @@ ttol = 0./12
 
 import tables as tb
 import numpy as np
-import history_steps
+# import history_steps
 
 modis_covariates = ['raw_data_elevation_geographic_world_version_5','daytime_land_temp_mean_geographic_world_2001_to_2006','daytime_land_temp_annual_amplitude_geographic_world_2001_to_2006','daytime_land_temp_triannual_amplitude_geographic_world_2001_to_2006','daytime_land_temp_biannual_amplitude_geographic_world_2001_to_2006']
 # glob_channels = [11,14,20,30,40,60,110,120,130,140,150,160,170,180,200]
@@ -35,7 +35,6 @@ except:
 
 from model import *
 from pymc import thread_partition_array
-from pymc.gp import GPEvaluationGibbs
 import dufvax
 from postproc_utils import *
 import pymc as pm
@@ -145,11 +144,11 @@ metadata_keys = ['disttol','ttol']
 
 def mcmc_init(M):
     
-    GPParentHistoryAM = pm.gp.wrap_metropolis_for_gp_parents(history_steps.HistoryAM)
+    # GPParentHistoryAM = pm.gp.wrap_metropolis_for_gp_parents(history_steps.HistoryAM)
     
     for k in ['b','0']:
-        M.use_step_method(GPEvaluationGibbs, M.spatial_vars[k]['sp_sub'], M.spatial_vars[k]['V'], M.eps_p_f[k], ti=M.duffy_ti)
-    M.use_step_method(GPEvaluationGibbs, M.spatial_vars['v']['sp_sub'], M.spatial_vars['v']['V'], M.eps_p_f['v'], ti=M.vivax_ti)
+        M.use_step_method(pm.gp.GPEvaluationGibbs, M.spatial_vars[k]['sp_sub'], M.spatial_vars[k]['V'], M.eps_p_f[k], ti=M.duffy_ti)
+    M.use_step_method(pm.gp.GPEvaluationGibbs, M.spatial_vars['v']['sp_sub'], M.spatial_vars['v']['V'], M.eps_p_f['v'], ti=M.vivax_ti)
     
     scalar_s = {'v': [], 'b': [], '0': []}
     for s in M.stochastics:
@@ -157,13 +156,12 @@ def mcmc_init(M):
         if np.alen(s.value)==1 and s.dtype!=np.dtype('object') and suffix in ['b','v','0']:
             scalar_s[suffix].append(s)
     
-    M.use_step_method(history_steps.HistoryAM, [M.spatial_vars[suffix]['V'] for suffix in ['b','0','v']])
+    M.use_step_method(pm.AdaptiveMetropolis, [M.spatial_vars[suffix]['V'] for suffix in ['b','0','v']])
     
     for suffix in ['v','b','0']:
-        M.use_step_method(GPParentHistoryAM, scalar_s[suffix])
+        M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s[suffix])
     
-    
-    M.use_step_method(history_steps.HistoryAM, [M.eps_p_f[k] for k in 'b','0','v']+[M.spatial_vars[k]['V'] for k in 'b','0','v'])
+    M.use_step_method(pm.AdaptiveMetropolis, [M.eps_p_f[k] for k in 'b','0','v']+[M.spatial_vars[k]['V'] for k in 'b','0','v'])
     
     M.assign_step_methods()
     
