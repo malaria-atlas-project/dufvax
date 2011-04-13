@@ -62,10 +62,10 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
     scale_in_km = scale*6378.1
     
     # This parameter controls the degree of differentiability of the field.
-    diff_degree = pm.Uniform('diff_degree_%s'%suffix, .5, 3, value=1, observed=True)
+    diff_degree = pm.Uniform('diff_degree_%s'%suffix, .1, 3, value=1, observed=True)
     
     # The nugget variance.
-    V = .2
+    V = .1
     # V = pm.Gamma('V_%s'%suffix, 4, 40, value=.2)
     # 
     # @pm.potential
