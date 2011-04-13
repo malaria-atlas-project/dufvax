@@ -65,8 +65,7 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
     diff_degree = pm.Uniform('diff_degree_%s'%suffix, .1, 3, value=1, observed=True)
     
     # The nugget variance.
-    V = .1
-    # V = pm.Gamma('V_%s'%suffix, 4, 40, value=.2)
+    V = pm.Gamma('V_%s'%suffix, 4, 40, value=.1, observed=True)
     # 
     # @pm.potential
     # def V_bound(V=V):
