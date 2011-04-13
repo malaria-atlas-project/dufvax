@@ -156,7 +156,7 @@ def mcmc_init(M):
         if np.alen(s.value)==1 and s.dtype!=np.dtype('object') and suffix in ['b','v','0']:
             scalar_s[suffix].append(s)
     
-    M.use_step_method(pm.AdaptiveMetropolis, [M.spatial_vars[suffix]['V'] for suffix in ['b','0','v']])
+    # M.use_step_method(pm.AdaptiveMetropolis, [M.spatial_vars[suffix]['V'] for suffix in ['b','0','v']])
     
     for suffix in ['v','b','0']:
         M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s[suffix])
