@@ -43,36 +43,64 @@ class strip_time(object):
     def diag_call(self, x, *args, **kwds):
         return self.f.diag_call(x[:,:2],*args,**kwds) 
 
+continent = 'Africa'
+
+# Prior parameters specified by Simon, Pete and Andy
+Af_scale_params = {'mu': -2.54, 'tau': 1.42, 'alpha': -.015}
+Af_amp_params = {'mu': .0535, 'tau': 1.79, 'alpha': 3.21}
+
+Am_scale_params = {'mu': -2.58, 'tau': 1.27, 'alpha': .051}
+Am_amp_params = {'mu': .607, 'tau': .809, 'alpha': -1.17}
+
+As_scale_params = {'mu': -2.97, 'tau': 1.75, 'alpha': -.143}
+As_amp_params = {'mu': .0535, 'tau': 1.79, 'alpha': 3.21}
+
+# Poor man's sparsification
+if continent == 'Americas':
+    scale_params = Am_scale_params
+    amp_params = Am_amp_params
+    disttol = 0/6378.
+    ttol = 0
+elif continent == 'Asia':
+    scale_params = As_scale_params
+    amp_params = As_amp_params    
+    disttol = 5./6378.
+    ttol = 1./12
+elif continent == 'Africa':
+    scale_params = Af_scale_params
+    amp_params = Af_amp_params    
+    disttol = 5./6378.
+    ttol = 1./12
+else:
+    scale_params = Af_scale_params
+    amp_params = Af_amp_params
+    disttol = 0./6378.
+    ttol = 0.
+
 def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=False):
     """
     A small function that creates the mean and covariance object
     of the random field.
     """
     
-    # The partial sill.
-    amp = pm.Exponential('amp_%s'%suffix, .1, value=9.)
+    # Subjective skew-normal prior on amp (the partial sill, tau) in log-space.
+    # Parameters are passed in in manual_MCMC_supervisor.
+    log_amp = pm.SkewNormal('log_amp_%s'%suffix,value=amp_params['mu'],**amp_params)
+    amp = pm.Lambda('amp_%s'%suffix, lambda log_amp = log_amp: np.exp(log_amp))
+
+    # Subjective skew-normal prior on scale (the range, phi_x) in log-space.
+    log_scale = pm.SkewNormal('log_scale_%s'%suffix,value=-1,**scale_params)
+    scale = pm.Lambda('scale_%s'%suffix, lambda log_scale = log_scale: np.exp(log_scale))
     
-    # The range parameter. Units are RADIANS. 
-    # 1 radian = the radius of the earth, about 6378.1 km
-    # scale = pm.Exponential('scale', 1./.08, value=.08)
-    
-    scale = pm.Exponential('scale_%s'%suffix, 5, value=.5)
     # scale_shift = pm.Exponential('scale_shift_%s'%suffix, .1, value=.08)
     # scale = pm.Lambda('scale_%s'%suffix,lambda s=scale_shift: s+.01)
     scale_in_km = scale*6378.1
     
     # This parameter controls the degree of differentiability of the field.
-    diff_degree = pm.Uniform('diff_degree_%s'%suffix, .1, 3, value=1, observed=True)
+    diff_degree = pm.Uniform('diff_degree_%s'%suffix, .1, 3, value=1)
     
     # The nugget variance.
     V = pm.Gamma('V_%s'%suffix, 4, 40, value=.1, observed=True)
-    # 
-    # @pm.potential
-    # def V_bound(V=V):
-    #     if V<.1:
-    #         return -np.inf
-    #     else:
-    #         return 0
     
     if temporal:
         inc = 0
