@@ -46,7 +46,8 @@ class strip_time(object):
 continent = 'Africa'
 
 # Prior parameters specified by Simon, Pete and Andy
-Af_scale_params = {'mu': -2.54, 'tau': 1.42, 'alpha': -.015}
+# Af_scale_params = {'mu': -2.54, 'tau': 1.42, 'alpha': -.015}
+Af_scale_params = {'alpha': -0.015, 'mu': -2, 'tau': 5.21}
 Af_amp_params = {'mu': .0535, 'tau': 1.79, 'alpha': 3.21}
 
 Am_scale_params = {'mu': -2.58, 'tau': 1.27, 'alpha': .051}
