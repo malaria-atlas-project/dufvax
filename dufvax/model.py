@@ -257,6 +257,9 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
             init_OK = False
             gc.collect()        
 
+    sp_sub_b, sp_sub_0, sp_sub_v = [spatial_vars[k]['sp_sub'] for k in ['b','0','v']]
+    V_b, V_0, V_v = [spatial_vars[k]['V'] for k in ['b','0','v']]
+
     eps_p_f = {}
     p = {}
     
