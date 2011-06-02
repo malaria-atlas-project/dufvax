@@ -158,10 +158,11 @@ def mcmc_init(M):
     
     # M.use_step_method(pm.AdaptiveMetropolis, [M.spatial_vars[suffix]['V'] for suffix in ['b','0','v']])
     
-    for suffix in ['v','b','0']:
-        M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s[suffix])
+    # for suffix in ['v','b','0']:
+    #     M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s[suffix])
     
-    M.use_step_method(pm.AdaptiveMetropolis, [M.eps_p_f[k] for k in 'b','0','v'])
+    [M.use_step_method(pm.Metropolis,M.eps_p_f[k]) for k in 'b','0','v']
+    
     
     M.assign_step_methods()
     
