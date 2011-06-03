@@ -85,31 +85,71 @@ else:
 # Get approximate evidence by using the INLA trick.
 # Grid the priors, Gibbs sample.
 
-def approximate_gaussian_full_conditional(M,Q,p,x):
+def approximate_gaussian_full_conditional(M_blocks,Q_blocks,p,x_blocks):
     """
-    p should be a Theano expression for the likelihood that depends only on x, a Theano tensor variable.
+    p should be a Theano expression for the likelihood that depends on the x_blocks, which are Theano tensor variables.
     
-    Q should be the inverse of C + nugget.
+    Each block of Q should be the inverse of C + nugget, the prior covariance of one of the x_blocks
     Returns:
     - Effective likelihood values
     - Effective likelihood variances
     - Full conditional mean
     - Full conditional precision.
     """
-    like_deriv1 = T.gradient()
-    mu = M
-    delta = x+np.inf
-    while np.abs(delta).max() > tol:
-        b = like_deriv1(mu)
-        c = -like_deriv2(mu)
-        Q_ = Q + np.diag(c)
-        mu_next = scipy.linalg.solve(Q_, b, sym_pos = True, overwrite_b = True)
-        delta = mu_next - mu
-        mu =  mu_next
+    grad1 = []
+    grad2 = []
+    like_derivs = []
+    for xb in x_blocks:
+        grad1.append(T.grad(p,xb))
+        grad2.append(T.as_tensor([T.grad(grad1[-1][i], xb)[i] for i in xrange(len(xb))]))
+        like_derivs.append(theano.function(x_blocks,[grad1,grad2]))
 
-    like_vals = -d1/d2+x-delta
-    return like_vals,-1/d2,x,Q_
+    Mc = M_blocks
+    delta = [0*Mc_+np.inf for Mc_ in Mc]
+    d1 = [None,None,None]
+    d2 = [None,None,None]
+    Qc = [None,None,None]
+    while np.max([np.abs(d) for d in delta]) > tol:
+        for i,M,Q,ld in enumerate(zip(M_blocks, Q_blocks,like_derivs)):
+            d1_,d2_ = like_derivs(Mc)
+            Qc_ = Q - np.diag(d2_)
+            rhs = d1_-np.dot(Q,Mc[i]-M)
+            Mc_ = scipy.linalg.solve(Qc_, rhs, sym_pos = True, overwrite_b = True)
+            delta[i] = Mc_ - Mc[i]
+            Mc[i] =  Mc_
+            
+            Qc[i] = Qc_
+            d1[i] = d1_
+            d2[i] = d2_
 
+    return [-d1_/d2_+x-delta_ for (d1_, d2_, x, delta_) in d1, d2, x_blocks, delta],    # Likelihood 'values'
+        [-1/d2_ for d2_ in d2],                                                         # Likelihood 'variances'
+        Mc,                                                                             # Conditional means
+        Qc                                                                              # Conditional precisions
+
+def gaussian_evidence(like_vals, like_vars, M, Q, Mc, Qc):
+    """
+    This function gives p(vals) in 
+
+    x ~ N(M,Q^{-1})
+    vals[i] ~ N(x[i], vars[i])
+
+    where: 
+    - pp are the backend's precision products of Q
+    - Mc is E[x|y]
+    - ppc is the backend's precision products of the conditional precision of x on y
+    - backend is a linear algebra backend
+
+    The answer should not depend on x, but Mc is probably a good choice.3
+    """
+
+    # p(x|y)p(y) = p(x,y)
+    # p(y) = p(y|x)p(x)/p(x|y)
+    x = Mc
+    pygx = pm.normal_like(vals, x, 1./vars)
+    pxgy = pm.mv_normal_like(x, Mc, Qc)
+    px = pm.mv_normal_like(x, M, Q)
+    return px + pygx - pxgy
 
 def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=False):
     """
@@ -191,19 +231,25 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
     def M():
         return pm.gp.Mean(pm.gp.zero_fn)
     
-    # Create the GP submodel    
-    sp_sub = pm.gp.GPSubmodel('sp_sub_%s'%suffix,M,C,mesh,tally_f=False)
-    sp_sub.f.trace=False
-    sp_sub.f_eval.value = sp_sub.f_eval.value - sp_sub.f_eval.value.mean()    
+    @pm.deterministic(trace=False,name='C_eval_plus_nugget_%s'%suffix)
+    def C_eval_plus_nugget(C=C,V=V,mesh=mesh):
+        out=C(mesh,mesh)
+        out.ravel()[0::out.shape[0]+1] += V
+        return out
+        
+    @pm.deterministic(trace=False,name='Q_%s'%suffix)
+    def Q(C_eval_plus_nugget=C_eval_plus_nugget):
+        return C_eval_plus_nugget.I
     
+        
     return locals()
         
 # =========================
 # = Haplotype frequencies =
 # =========================
-xb = T.dscalar('xb')
-x0 = T.dscalar('x0')
-xv = T.dscalar('xv')
+xb = T.dvector('xb')
+x0 = T.dvector('x0')
+xv = T.dvector('xv')
 p1 = T.dscalar('p1')
 
 def theano_invlogit(x):
@@ -235,15 +281,26 @@ for i in xrange(4):
 g_freqs_fns = dict([(k,theano.function([pb,p0,p1], v)) for k,v in g_freqs.items()])
 for i in xrange(1000):
     pb_,p0_,p1_ = np.random.random(size=3)
-    np.testing.assert_almost_equal(np.sum([gfi(pb_,p0_,p1_) for gfi in g_freqs_fns.values()]),1.)
+    np.testing.assert_almost_equal(np.sum([gfi([pb_],[p0_],p1_) for gfi in g_freqs_fns.values()]),1.)
 
-    
+p_prom = (pb*p0+(1-pb)*p1)**2
+p_aphe = 1-(1-(1-pb)*(1-p1))**2
+p_bphe = 1-(1-pb*(1-p0))**2
+p_phe = [\
+    g_freqs['ab'],
+    g_freqs['a0']+g_freqs['a1']+g_freqs['aa'],
+    g_freqs['b0']+g_freqs['b1']+g_freqs['bb'],
+    g_freqs['00']+g_freqs['01']+g_freqs['11']]    
+p_gen = [g_freqs[key] for key in ['aa','ab','a0','a1','bb','b0','b1','00','01','11']]
+pphe0 = g_freqs['00']+g_freqs['01']+g_freqs['11']
+p_vivax = pv*(1-pphe0)
+
 def theano_binomial(k, n, p):
     return T.sum(k*T.log(p) + (n-k)*T.log(1-p))
     
 def theano_multinomial(x,p):
     N = len(x)
-    return T.sum(T.dot(T.log(p)*np.asarray(x)))
+    return T.sum(T.dot(T.log(p),np.asarray(x)))
     
 def likelihood_expression_to_potential(name, expr, x_theano, x_pymc):
     expr_fn = theano.function(expr, x_theano)
@@ -254,6 +311,9 @@ def likelihood_expression_to_potential(name, expr, x_theano, x_pymc):
 
 def zipmap(f, keys):
     return dict(zip(keys, map(f, keys)))
+
+x_test = np.array([[10,12,2,4],[30,2,14,6],[3,45,26,3]])
+
 
 #TODO: Cut both Duffy and Vivax    
 def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
@@ -268,8 +328,6 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     """
     This function is required by the generic MBG code.
     """
-    pass
-    
     ra = csv2rec(input_data)
     
     # Step method granularity    
@@ -294,7 +352,7 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     vivax_data_locs = map(tuple,vivax_data_mesh[:,:2])
     
     full_vivax_ui = np.arange(len(lon))[where_vivax][vivax_ui]
-
+    
     # Create the mean & its evaluation at the data locations.
     init_OK = False
         
@@ -309,7 +367,7 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     init_OK = False
     while not init_OK:
         try:
-            spatial_vars = zipmap(lambda k: covariance_submodel(k, ra, logp_mesh_dict[k], covariate_key_dict[k], ui_dict[k], input_data, temporal_dict[k]), ['b','0','v'])
+            spatial_vars = zipmap(lambda k: covariance_submodel(k, ra, data_mesh_dict[k], covariate_key_dict[k], ui_dict[k], input_data, temporal_dict[k]), ['b','0','v'])
             tau = zipmap(lambda k: 1./spatial_vars[k]['V'], ['b','0','v'])
         
             # Loop over data clusters, adding nugget and applying link function.
@@ -318,19 +376,9 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
             print 'Trying again: %s'%msg
             init_OK = False
             gc.collect()        
-
-    sp_sub_b, sp_sub_0, sp_sub_v = [spatial_vars[k]['sp_sub'] for k in ['b','0','v']]
-    V_b, V_0, V_v = [spatial_vars[k]['V'] for k in ['b','0','v']]
-
-    eps_p_f = {}
     
-    for k in ['b','0','v']:
-        if k=='v':
-            fi = vivax_fi
-        else:
-            fi = duffy_fi
-        eps_p_f[k] = pm.Normal('eps_p_f_%s'%k, spatial_vars[k]['sp_sub'].f_eval[fi], tau[k], value=np.random.normal(size=len(fi)))
-    
+    V_b, V_0, V_v = [spatial_vars[k]['V'] for k in ['b','0','v']]    
+        
     warnings.warn('Not using age correction')
     # junk, splreps = age_corr_likelihoods(lo_age[where_vivax], up_age[where_vivax], vivax_pos[where_vivax], vivax_neg[where_vivax], 10000, np.arange(.01,1.,.01), a_pred, P_trace, S_trace, F_trace)
     # for i in xrange(len(splreps)):
@@ -340,58 +388,41 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     where_prom = np.where(datatype=='prom')
     cur_obs = np.array([prom0[where_prom], promab[where_prom]]).T
     # Need to have either b and 0 or a and 1 on both chromosomes
-    p_prom = (pb*p0+(1-pb)*p1)**2
     cur_n = n[where_prom]
     np.testing.assert_equal(cur_n, np.sum(cur_obs,axis=1))
     theano_likelihood_prom = theano_binomial(prom0[where_prom], cur_n, p_prom)
-    pymc_likelihood_prom = likelihood_expression_to_potential('likelihood_prom', theano_likelihood_prom, [xb,x0,p1], [eps_p_f['b'],eps_p_f['0'],p1_pymc])
         
-    where_vivax = np.where(datatype=='vivax')
-    cur_obs = np.array([vivaxa[where_vivax], vivax0[where_vivax]]).T
-    cur_n = n[where_vivax]
+    where_aphe = np.where(datatype=='aphe')
+    cur_obs = np.array([aphea[where_aphe], aphe0[where_aphe]]).T
+    cur_n = n[where_aphe]
     np.testing.assert_equal(cur_n, np.sum(cur_obs, axis=1))
-    # Need to have (a and not 1) on either chromosome, or not (not (a and not 1) on both chromosomes)
-    p_vivax = 1-(1-(1-pb)*(1-p1))**2
-    theano_likelihood_vivax = theano_binomial(vivaxa[where_vivax], cur_n, p_vivax)
-    pymc_likelihood_vivax = likelihood_expression_to_potential('likelihood_vivax', theano_likelihood_vivax, [xb,x0,p1], [eps_p_f['b'],eps_p_f['0'],p1_pymc])
+    # Need to have (a and not 1) on either chromosome, or not (not (a and not 1) on both chromosomes.
+    theano_likelihood_aphe = theano_binomial(aphea[where_aphe], cur_n, p_aphe)
         
     where_bphe = np.where(datatype=='bphe')
     cur_n = n[where_bphe]
     cur_obs = np.array([bpheb[where_bphe], bphe0[where_bphe]]).T
     np.testing.assert_equal(cur_n, np.sum(cur_obs, axis=1))
     # Need to have (b and not 0) on either chromosome
-    p_bphe = 1-(1-pb*(1-p0))**2
     theano_likelihood_bphe = theano_binomial(bpheb[where_bphe], cur_n, p_bphe)
-    pymc_likelihood_bphe = likelihood_expression_to_potential('likelihood_bphe', theano_likelihood_bphe, [xb,x0,p1], [eps_p_f['b'],eps_p_f['0'],p1_pymc])
         
     where_phe = np.where(datatype=='phe')
     cur_obs = np.array([pheab[where_phe],phea[where_phe],pheb[where_phe],phe0[where_phe]])
     cur_n = n[where_phe]
     np.testing.assert_equal(cur_n, np.sum(cur_obs, axis=1))
-    p_phe = [\
-        g_freqs['ab'],
-        g_freqs['a0']+g_freqs['a1']+g_freqs['aa'],
-        g_freqs['b0']+g_freqs['b1']+g_freqs['bb'],
-        g_freqs['00']+g_freqs['01']+g_freqs['11']]
     theano_likelihood_phe = theano_multinomial(cur_obs, p_phe)
-    pymc_likelihood_phe = likelihood_expression_to_potential('likelihood_phe', theano_likelihood_phe, [xb,x0,p1], [eps_p_f['b'],eps_p_f['0'],p1_pymc])
     
     where_gen = np.where(datatype=='gen')
     cur_n = n[where_gen]
     cur_obs = np.array([genaa[where_gen],genab[where_gen],gena0[where_gen],gena1[where_gen],genbb[where_gen],genb0[where_gen],genb1[where_gen],gen00[where_gen],gen01[where_gen],gen11[where_gen]])
     np.testing.assert_equal(cur_n, np.sum(cur_obs,axis=1))
-    p_gen = [g_freqs[key](pb,p0,p1) for key in ['aa','ab','a0','a1','bb','b0','b1','00','01','11']]
     theano_likelihood_gen = theano_multinomial(cur_obs, p_gen)
-    pymc_likelihood_gen = likelihood_expression_to_potential('likelihood_gen', theano_likelihood_gen, [xb,x0,p1], [eps_p_f['b'],eps_p_f['0'],p1_pymc])
     
     # Now vivax.
     cur_obs = np.array([vivax_pos[where_vivax], vivax_neg[where_vivax]])
     cur_n = np.sum(cur_obs,axis=1)
-    pphe0 = g_freqs['00']+g_freqs['01']+g_freqs['11']
-    p_vivax = pv*(1-pphe0)
     np.testing.assert_equal(cur_n, np.sum(cur_obs,axis=1))
     theano_likelihood_vivax = theano_binomial(cur_obs, cur_n, p_vivax)
-    pymc_likelihood_vivax = likelihood_expression_to_potential('likelihood_vivax', theano_likelihood_vivax, [xb,x0,p1,xv], [eps_p_f['b'],eps_p_f['0'],p1_pymc,eps_p_f['v']])
     
     if np.any(np.isnan(cur_obs)):
         raise ValueError
