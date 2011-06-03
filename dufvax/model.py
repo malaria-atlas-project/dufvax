@@ -101,6 +101,9 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
     of the random field.
     """
     
+    if not temporal:
+        mesh = mesh[:,:2]
+    
     # Subjective skew-normal prior on amp (the partial sill, tau) in log-space.
     # Parameters are passed in in manual_MCMC_supervisor.
     log_amp = pm.SkewNormal('log_amp_%s'%suffix,value=amp_params['mu'],observed=True,**amp_params)
@@ -152,7 +155,7 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
                 return np.sum(value+np.log(1+k)+k*np.log(1-np.exp(value)))
             else:
                 return -np.inf
-        
+
         # covfacs are uniformly distributed on [0,1]        
         covfacs = pm.Lambda('covfacs_%s'%suffix, lambda x=log_covfacs: np.exp(x))
 
@@ -162,7 +165,7 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
             facdict['m'] = 1.e6
             eval_fun = CovarianceWithCovariates(my_st, fname, covariate_keys, ui, fac=facdict, ra=ra)
             return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, inc=inc, ecc=ecc,st=scale_t, sd=diff_degree, tlc=t_lim_corr, sf = sin_frac)
-                                            
+               
     else:
         # Create the covariance & its evaluation at the data locations.
         @pm.deterministic(trace=False,name='C_%s'%suffix)
@@ -178,9 +181,8 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
     @pm.deterministic(trace=False,name='C_eval_plus_nugget_%s'%suffix)
     def C_eval_plus_nugget(C=C,V=V,mesh=mesh):
         out=C(mesh,mesh)
-        out.ravel()[0::out.shape[0]+1] += V
-        return out
-        
+        return out + np.eye(out.shape[0])*V
+            
     @pm.deterministic(trace=False,name='Q_%s'%suffix)
     def Q(C_eval_plus_nugget=C_eval_plus_nugget):
         return C_eval_plus_nugget.I
@@ -257,13 +259,12 @@ def zipmap(f, keys):
 
 x_test = np.array([[10,12,2,4],[30,2,14,6],[3,45,26,3]])
 
-
 #TODO: Cut both Duffy and Vivax    
 def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
                 genaa,genab,genbb,gen00,gena0,genb0,gena1,genb1,gen01,gen11,
                 pheab,phea,pheb,
                 phe0,prom0,promab,
-                vivaxa,vivax0,
+                aphea,aphe0,
                 bpheb,bphe0,
                 vivax_pos,vivax_neg,
                 lo_age, up_age,
@@ -283,26 +284,14 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     # Vivax only needs to be modelled where Vivax is observed.
     # Complication: Vivax can have multiple co-located observations at different times,
     # all corresponding to the same Duffy observation.
-    print 'Uniquifying.'
-    duffy_data_mesh, duffy_logp_mesh, duffy_fi, duffy_ui, duffy_ti = uniquify_tol(disttol,ttol,lon,lat)
-    duffy_data_mesh = np.hstack((duffy_data_mesh, np.atleast_2d(t).T))
-    duffy_logp_mesh = np.hstack((duffy_logp_mesh, np.atleast_2d(t[duffy_ui]).T))
-    vivax_data_mesh, vivax_logp_mesh, vivax_fi, vivax_ui, vivax_ti = uniquify_tol(disttol,ttol,lon[where_vivax],lat[where_vivax],t[where_vivax])
+    data_mesh = generic_mbg.combine_st_inputs(lon,lat,t)
     
-    print 'Done uniquifying.'
-    
-    duffy_data_locs = map(tuple,duffy_data_mesh[:,:2])
-    vivax_data_locs = map(tuple,vivax_data_mesh[:,:2])
-    
-    full_vivax_ui = np.arange(len(lon))[where_vivax][vivax_ui]
-    
+    data_mesh_dict = {'b': data_mesh, '0': data_mesh, 'v': data_mesh[where_vivax]}
+        
     # Create the mean & its evaluation at the data locations.
     init_OK = False
         
-    covariate_key_dict = {'v': set(covariate_keys), 'b': ['africa'], '0':[]}
-    ui_dict = {'v': full_vivax_ui, 'b': duffy_ui, '0': duffy_ui}
-        
-    logp_mesh_dict = {'b': duffy_logp_mesh, '0': duffy_logp_mesh, 'v': vivax_logp_mesh}
+    covariate_key_dict = {'v': set(covariate_keys), 'b': ['africa'], '0':[]}        
     temporal_dict = {'b': False, '0': False, 'v': True}
     
     p1_pymc = pm.Uniform('p1_pymc',0,.4,value=.1,observed=True)
@@ -310,7 +299,7 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     init_OK = False
     while not init_OK:
         try:
-            spatial_vars = zipmap(lambda k: covariance_submodel(k, ra, data_mesh_dict[k], covariate_key_dict[k], ui_dict[k], input_data, temporal_dict[k]), ['b','0','v'])
+            spatial_vars = zipmap(lambda k: covariance_submodel(k, ra, data_mesh_dict[k], covariate_key_dict[k], np.arange(len(data_mesh)), input_data, temporal_dict[k]), ['b','0','v'])
             tau = zipmap(lambda k: 1./spatial_vars[k]['V'], ['b','0','v'])
         
             # Loop over data clusters, adding nugget and applying link function.
@@ -330,9 +319,9 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     
     where_prom = np.where(datatype=='prom')
     cur_obs = np.array([prom0[where_prom], promab[where_prom]]).T
-    # Need to have either b and 0 or a and 1 on both chromosomes
     cur_n = n[where_prom]
     np.testing.assert_equal(cur_n, np.sum(cur_obs,axis=1))
+    # Need to have either b and 0 or a and 1 on both chromosomes    
     theano_likelihood_prom = theano_binomial(prom0[where_prom], cur_n, p_prom)
         
     where_aphe = np.where(datatype=='aphe')
@@ -352,20 +341,20 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     where_phe = np.where(datatype=='phe')
     cur_obs = np.array([pheab[where_phe],phea[where_phe],pheb[where_phe],phe0[where_phe]])
     cur_n = n[where_phe]
-    np.testing.assert_equal(cur_n, np.sum(cur_obs, axis=1))
+    np.testing.assert_equal(cur_n, np.sum(cur_obs, axis=0))
     theano_likelihood_phe = theano_multinomial(cur_obs, p_phe)
     
     where_gen = np.where(datatype=='gen')
     cur_n = n[where_gen]
     cur_obs = np.array([genaa[where_gen],genab[where_gen],gena0[where_gen],gena1[where_gen],genbb[where_gen],genb0[where_gen],genb1[where_gen],gen00[where_gen],gen01[where_gen],gen11[where_gen]])
-    np.testing.assert_equal(cur_n, np.sum(cur_obs,axis=1))
+    np.testing.assert_equal(cur_n, np.sum(cur_obs,axis=0))
     theano_likelihood_gen = theano_multinomial(cur_obs, p_gen)
     
     # Now vivax.
-    cur_obs = np.array([vivax_pos[where_vivax], vivax_neg[where_vivax]])
+    cur_obs = np.array([vivax_pos[where_vivax], vivax_neg[where_vivax]]).T
     cur_n = np.sum(cur_obs,axis=1)
     np.testing.assert_equal(cur_n, np.sum(cur_obs,axis=1))
-    theano_likelihood_vivax = theano_binomial(cur_obs, cur_n, p_vivax)
+    theano_likelihood_vivax = theano_binomial(vivax_pos[where_vivax], cur_n, p_vivax)
     
     theano_likelihood = theano_likelihood_prom + theano_likelihood_aphe + theano_likelihood_bphe + theano_likelihood_phe + theano_likelihood_gen + theano_likelihood_vivax
     
@@ -381,7 +370,7 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
                     M_blocks=[spatial_vars[k]['M'] for k in ['b','0','v']],
                     Q_blocks=[spatial_vars[k]['Q'] for k in ['b','0','v']]):
         like_vals, like_covs, Mc_blocks, Qc_blocks = full_conditional_params
-        def gaussian_evidence(like_vals, like_covs, M_blocks, Q_blocks, Mc_blocks, Qc_blocks)
+        return gaussian_evidence(like_vals, like_covs, M_blocks, Q_blocks, Mc_blocks, Qc_blocks)
     
     if np.any(np.isnan(cur_obs)):
         raise ValueError

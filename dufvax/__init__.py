@@ -143,29 +143,7 @@ def validate_postproc(**non_cov_columns):
 metadata_keys = ['disttol','ttol']
 
 def mcmc_init(M):
-    
-    # GPParentHistoryAM = pm.gp.wrap_metropolis_for_gp_parents(history_steps.HistoryAM)
-    
-    for k in ['b','0']:
-        M.use_step_method(pm.gp.GPEvaluationGibbs, M.spatial_vars[k]['sp_sub'], M.spatial_vars[k]['V'], M.eps_p_f[k], ti=M.duffy_ti)
-    M.use_step_method(pm.gp.GPEvaluationGibbs, M.spatial_vars['v']['sp_sub'], M.spatial_vars['v']['V'], M.eps_p_f['v'], ti=M.vivax_ti)
-    
-    scalar_s = {'v': [], 'b': [], '0': []}
-    for s in M.stochastics:
-        suffix = s.__name__[-1]
-        if np.alen(s.value)==1 and s.dtype!=np.dtype('object') and suffix in ['b','v','0']:
-            scalar_s[suffix].append(s)
-    
-    # M.use_step_method(pm.AdaptiveMetropolis, [M.spatial_vars[suffix]['V'] for suffix in ['b','0','v']])
-    
-    # for suffix in ['v','b','0']:
-    #     M.use_step_method(pm.gp.GPParentAdaptiveMetropolis, scalar_s[suffix])
-    
-    [M.use_step_method(pm.Metropolis,M.eps_p_f[k]) for k in 'b','0','v']
-    
-    
-    M.assign_step_methods()
-    
+    pass
 
 non_cov_columns = { 'n': 'int',
                     'datatype': 'str',
