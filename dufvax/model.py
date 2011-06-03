@@ -86,71 +86,15 @@ else:
 # Grid the priors, Gibbs sample.
 
 def approximate_gaussian_full_conditional(M_blocks,Q_blocks,p,x_blocks):
-    """
-    p should be a Theano expression for the likelihood that depends on the x_blocks, which are Theano tensor variables.
+    like_vals = None
+    like_covs = None
+    Mc_blocks = None
+    Qc_blocks = None
+    return like_vals, like_covs, Mc_blocks, Qc_blocks
+
+def gaussian_evidence(like_vals, like_covs, M_blocks, Q_blocks, Mc_blocks, Qc_blocks):
+    return 0
     
-    Each block of Q should be the inverse of C + nugget, the prior covariance of one of the x_blocks
-    Returns:
-    - Effective likelihood values
-    - Effective likelihood variances
-    - Full conditional mean
-    - Full conditional precision.
-    """
-    grad1 = []
-    grad2 = []
-    like_derivs = []
-    for xb in x_blocks:
-        grad1.append(T.grad(p,xb))
-        grad2.append(T.as_tensor([T.grad(grad1[-1][i], xb)[i] for i in xrange(len(xb))]))
-        like_derivs.append(theano.function(x_blocks,[grad1,grad2]))
-
-    Mc = M_blocks
-    delta = [0*Mc_+np.inf for Mc_ in Mc]
-    d1 = [None,None,None]
-    d2 = [None,None,None]
-    Qc = [None,None,None]
-    while np.max([np.abs(d) for d in delta]) > tol:
-        for i,M,Q,ld in enumerate(zip(M_blocks, Q_blocks,like_derivs)):
-            d1_,d2_ = like_derivs(Mc)
-            Qc_ = Q - np.diag(d2_)
-            rhs = d1_-np.dot(Q,Mc[i]-M)
-            Mc_ = scipy.linalg.solve(Qc_, rhs, sym_pos = True, overwrite_b = True)
-            delta[i] = Mc_ - Mc[i]
-            Mc[i] =  Mc_
-            
-            Qc[i] = Qc_
-            d1[i] = d1_
-            d2[i] = d2_
-
-    return [-d1_/d2_+x-delta_ for (d1_, d2_, x, delta_) in d1, d2, x_blocks, delta],    # Likelihood 'values'
-        [-1/d2_ for d2_ in d2],                                                         # Likelihood 'variances'
-        Mc,                                                                             # Conditional means
-        Qc                                                                              # Conditional precisions
-
-def gaussian_evidence(like_vals, like_vars, M, Q, Mc, Qc):
-    """
-    This function gives p(vals) in 
-
-    x ~ N(M,Q^{-1})
-    vals[i] ~ N(x[i], vars[i])
-
-    where: 
-    - pp are the backend's precision products of Q
-    - Mc is E[x|y]
-    - ppc is the backend's precision products of the conditional precision of x on y
-    - backend is a linear algebra backend
-
-    The answer should not depend on x, but Mc is probably a good choice.3
-    """
-
-    # p(x|y)p(y) = p(x,y)
-    # p(y) = p(y|x)p(x)/p(x|y)
-    x = Mc
-    pygx = pm.normal_like(vals, x, 1./vars)
-    pxgy = pm.mv_normal_like(x, Mc, Qc)
-    px = pm.mv_normal_like(x, M, Q)
-    return px + pygx - pxgy
-
 def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=False):
     """
     A small function that creates the mean and covariance object
@@ -241,7 +185,6 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
     def Q(C_eval_plus_nugget=C_eval_plus_nugget):
         return C_eval_plus_nugget.I
     
-        
     return locals()
         
 # =========================
@@ -423,6 +366,22 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     cur_n = np.sum(cur_obs,axis=1)
     np.testing.assert_equal(cur_n, np.sum(cur_obs,axis=1))
     theano_likelihood_vivax = theano_binomial(cur_obs, cur_n, p_vivax)
+    
+    theano_likelihood = theano_likelihood_prom + theano_likelihood_aphe + theano_likelihood_bphe + theano_likelihood_phe + theano_likelihood_gen + theano_likelihood_vivax
+    
+    @pm.deterministic(trace=False)
+    def full_conditional_params(M_blocks=[spatial_vars[k]['M'] for k in ['b','0','v']],
+                                Q_blocks=[spatial_vars[k]['Q'] for k in ['b','0','v']],
+                                p = theano_likelihood,
+                                x_blocks = [xb,x0,xv]):
+        return approximate_gaussian_full_conditional(M_blocks,Q_blocks,p,x_blocks)
+    
+    @pm.potential
+    def evidence(full_conditional_params=full_conditional_params,
+                    M_blocks=[spatial_vars[k]['M'] for k in ['b','0','v']],
+                    Q_blocks=[spatial_vars[k]['Q'] for k in ['b','0','v']]):
+        like_vals, like_covs, Mc_blocks, Qc_blocks = full_conditional_params
+        def gaussian_evidence(like_vals, like_covs, M_blocks, Q_blocks, Mc_blocks, Qc_blocks)
     
     if np.any(np.isnan(cur_obs)):
         raise ValueError
