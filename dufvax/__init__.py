@@ -146,7 +146,7 @@ metadata_keys = ['disttol','ttol']
 def mcmc_init(M):
     for suffix in ['b','0','v']:
         sv = M.spatial_vars[k]
-        M.use_step_method(DufvaxStep, sv['sp_sub'], sv['V'], M.eps_p_f['k'], M.theano_to_pymc_fpns, M.theano_likelihood, delay=1000, interval=200, scales=None)
+        M.use_step_method(DufvaxStep, sv['sp_sub'], M.data_mesh_dict[k], sv['V'], M.eps_p_f['k'], M.theano_to_pymc_fpns, M.theano_likelihood, delay=1000, interval=200, scales=None)
 
 non_cov_columns = { 'n': 'int',
                     'datatype': 'str',

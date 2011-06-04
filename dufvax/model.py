@@ -81,46 +81,49 @@ else:
     disttol = 0./6378.
     ttol = 0.
     
-def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=False):
+def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, temporal=False):
     """
     A small function that creates the mean and covariance object
     of the random field.
     """
     
-    if not temporal:
-        mesh = mesh[:,:2]
+    # The partial sill.
+    amp = pm.Exponential('amp_%s'%suffix, .1, value=1.)
     
-    # Subjective skew-normal prior on amp (the partial sill, tau) in log-space.
-    # Parameters are passed in in manual_MCMC_supervisor.
-    log_amp = pm.SkewNormal('log_amp_%s'%suffix,value=amp_params['mu'],observed=True,**amp_params)
-    amp = pm.Lambda('amp_%s'%suffix, lambda log_amp = log_amp: np.exp(log_amp))
-
-    # Subjective skew-normal prior on scale (the range, phi_x) in log-space.
-    log_scale = pm.SkewNormal('log_scale_%s'%suffix,value=-1,observed=True,**scale_params)
-    scale = pm.Lambda('scale_%s'%suffix, lambda log_scale = log_scale: np.exp(log_scale))
+    # The range parameter. Units are RADIANS. 
+    # 1 radian = the radius of the earth, about 6378.1 km
+    # scale = pm.Exponential('scale', 1./.08, value=.08)
     
+    scale = pm.Exponential('scale_%s'%suffix, .1, value=.08)
     # scale_shift = pm.Exponential('scale_shift_%s'%suffix, .1, value=.08)
     # scale = pm.Lambda('scale_%s'%suffix,lambda s=scale_shift: s+.01)
     scale_in_km = scale*6378.1
     
     # This parameter controls the degree of differentiability of the field.
-    diff_degree = pm.Uniform('diff_degree_%s'%suffix, .1, 3, value=.5, observed=True)
+    diff_degree = pm.Uniform('diff_degree_%s'%suffix, .5, 3)
     
-    # The nugget variance.
-    V = pm.Gamma('V_%s'%suffix, 4, 40, value=.1,observed=True)
+    # The nugget variance. Lower-bounded to preserve mixing.
+    V = pm.Exponential('V_%s'%suffix, .1, value=1.)
+    
+    @pm.potential
+    def V_bound(V=V):
+        if V<.1:
+            return -np.inf
+        else:
+            return 0
     
     if temporal:
         inc = 0
         ecc = 0
         # Exponential prior on the temporal scale/range, phi_t. Standard one-over-x
         # doesn't work bc data aren't strong enough to prevent collapse to zero.
-        scale_t = pm.Exponential('scale_t_%s'%suffix, 5,value=1,observed=True)
+        scale_t = pm.Exponential('scale_t_%s'%suffix, .01,value=.1)
 
         # Uniform prior on limiting correlation far in the future or past.
-        t_lim_corr = pm.Uniform('t_lim_corr_%s'%suffix,0,1,value=.8,observed=True)
+        t_lim_corr = pm.Uniform('t_lim_corr_%s'%suffix,0,1,value=.01)
 
         # # Uniform prior on sinusoidal fraction in temporal variogram
-        sin_frac = pm.Uniform('sin_frac_%s'%suffix,0,1,value=.1,observed=True)
+        sin_frac = pm.Uniform('sin_frac_%s'%suffix,0,1,value=.01)
         
         @pm.potential(name='st_constraint_%s'%suffix)
         def st_constraint(sd=.5, sf=sin_frac, tlc=t_lim_corr):    
@@ -129,11 +132,9 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
             else:
                 return 0.
         
-        # covfac_pow = pm.Exponential('covfac_pow_%s'%suffix, .1, value=.5)
-        covfac_pow = 0
+        covfac_pow = pm.Exponential('covfac_pow_%s'%suffix, .1, value=.5)
         
         covariate_names = covariate_keys
-        @pm.observed
         @pm.stochastic(name='log_covfacs_%s'%suffix)
         def log_covfacs(value=-np.ones(len(covariate_names))*.01, k=covfac_pow):
             """Induced prior on covfacs is p(x)=(1+k)(1-x)^k, x\in [0,1]"""
@@ -141,44 +142,43 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
                 return np.sum(value+np.log(1+k)+k*np.log(1-np.exp(value)))
             else:
                 return -np.inf
-
+        
         # covfacs are uniformly distributed on [0,1]        
         covfacs = pm.Lambda('covfacs_%s'%suffix, lambda x=log_covfacs: np.exp(x))
-
-        @pm.deterministic(trace=False,name='C_%s'%suffix)
-        def C(amp=amp,scale=scale,inc=inc,ecc=ecc,scale_t=scale_t, t_lim_corr=t_lim_corr, sin_frac=sin_frac, diff_degree=diff_degree, covfacs=covfacs, covariate_keys=covariate_keys, ra=ra, mesh=mesh, ui=ui):
+                
+        @pm.deterministic(trace=True,name='C_%s'%suffix)
+        def C(amp=amp,scale=scale,inc=inc,ecc=ecc,scale_t=scale_t, t_lim_corr=t_lim_corr, sin_frac=sin_frac, diff_degree=diff_degree, covfacs=covfacs, covariate_keys=covariate_keys, ra=ra):
             facdict = dict([(k,1.e2*covfacs[i]) for i,k in enumerate(covariate_keys)])
             facdict['m'] = 1.e6
-            eval_fun = CovarianceWithCovariates(my_st, fname, covariate_keys, ui, fac=facdict, ra=ra)
+            eval_fun = CovarianceWithCovariates(my_st, mesh, covariate_keys, ui, fac=facdict, ra=ra)
             return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, inc=inc, ecc=ecc,st=scale_t, sd=diff_degree, tlc=t_lim_corr, sf = sin_frac)
-               
+                                            
     else:
         # Create the covariance & its evaluation at the data locations.
-        @pm.deterministic(trace=False,name='C_%s'%suffix)
-        def C(amp=amp, scale=scale, diff_degree=diff_degree, covariate_keys=covariate_keys, ra=ra, mesh=mesh, ui=ui):
-            eval_fun = CovarianceWithCovariates(strip_time(pm.gp.matern.geo_rad), fname, covariate_keys, ui, fac=1.e4, ra=ra)
+        @pm.deterministic(trace=True,name='C_%s'%suffix)
+        def C(amp=amp, scale=scale, diff_degree=diff_degree, covariate_keys=covariate_keys, ra=ra):
+            eval_fun = CovarianceWithCovariates(strip_time(pm.gp.matern.geo_rad), mesh, covariate_keys, ui, fac=1.e4, ra=ra)
             return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, diff_degree=diff_degree)
     
     # Create the mean function    
-    @pm.deterministic(trace=False, name='M_%s'%suffix)
+    @pm.deterministic(trace=True, name='M_%s'%suffix)
     def M():
         return pm.gp.Mean(pm.gp.zero_fn)
-        
+    
     # Create the GP submodel    
     sp_sub = pm.gp.GPSubmodel('sp_sub_%s'%suffix,M,C,mesh)
     sp_sub.f.trace=False
     sp_sub.f_eval.value = sp_sub.f_eval.value - sp_sub.f_eval.value.mean()    
-
-        
+    
     return locals()
-        
+            
 # =========================
 # = Haplotype frequencies =
 # =========================
 xb = T.dvector('xb')
 x0 = T.dvector('x0')
 xv = T.dvector('xv')
-p1 = T.dscalar('p1')
+p1 = .01
 
 def theano_invlogit(x):
     return T.exp(x)/(T.exp(x)+1)
@@ -246,7 +246,7 @@ def grad2(expr, wrt):
     return expr
     
 class DufvaxStep(pm.AdaptiveMetropolis):
-    def __init__(self, sp_sub, nugget, field_plus_nugget, theano_to_pymc_fpns, theano_likelihood, delay=1000, interval=200, scales=None):
+    def __init__(self, sp_sub, data_mesh, nugget, field_plus_nugget, theano_to_pymc_fpns, theano_likelihood, delay=1000, interval=200, scales=None):
         """
         field_plus_nugget should be a Theano variable.
         thean_to_pymc_fpns should be a map from Theano variables to PyMC variables.
@@ -258,6 +258,7 @@ class DufvaxStep(pm.AdaptiveMetropolis):
         self.field_plus_nugget = field_plus_nugget
         self.theano_to_pymc_fpns = theano_to_pymc_fpns
         self.name_to_pymc_fpns = dict([(k.name(), v) for k,v in theano_to_pymc_fpns.items()])
+        self.data_mesh = data_mesh
         
         self.likelihood_function = theano.function(theano_to_pymc_fpns.keys(), self.theano_likelihood)
         self.grad1_function = theano.function(theano_to_pymc_fpns.keys(), T.grad(self.theano_likelihood, [field_plus_nugget]))
@@ -305,7 +306,7 @@ class DufvaxStep(pm.AdaptiveMetropolis):
         like_vals, like_vars, Mc, Qc = self.approximate_gaussian_full_conditional()
         self.field_plus_nugget.value = pm.rmv_normal(Mc,Qc)
         M, C = copy(self.sp_sub.M), copy(self.sp_sub.C)
-        pm.gp.observe(M,C,self.sp_sub.mesh,self.field_plus_nugget.value,obs_V=pm.utils.value(self.nugget))
+        pm.gp.observe(M,C,self.data_mesh,self.field_plus_nugget.value,obs_V=pm.utils.value(self.nugget))
         
         # FIXME: Use the fi's.
         self.sp_sub.f_eval.value = pm.rmv_normal_cov(M(self.sp_sub.mesh), C(self.sp_sub.mesh, self.sp_sub.mesh))
@@ -332,22 +333,25 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     # Vivax only needs to be modelled where Vivax is observed.
     # Complication: Vivax can have multiple co-located observations at different times,
     # all corresponding to the same Duffy observation.
-    data_mesh = generic_mbg.combine_st_inputs(lon,lat,t)
+    duffy_data_mesh, duffy_logp_mesh, duffy_fi, duffy_ui, duffy_ti = generic_mbg.uniquify_tol(disttol,ttol,lon,lat)
+    duffy_data_mesh = np.hstack((duffy_data_mesh, np.atleast_2d(t).T))
+    duffy_logp_mesh = np.hstack((duffy_logp_mesh, np.atleast_2d(t[duffy_ui]).T))
+    vivax_data_mesh, vivax_logp_mesh, vivax_fi, vivax_ui, vivax_ti = generic_mbg.uniquify_tol(disttol,ttol,lon[where_vivax],lat[where_vivax],t[where_vivax])
     
-    data_mesh_dict = {'b': data_mesh, '0': data_mesh, 'v': data_mesh[where_vivax]}
-        
+    data_mesh_dict = {'b': duffy_data_mesh, '0': duffy_data_mesh, 'v': vivax_data_mesh}
+    logp_mesh_dict = {'b': duffy_logp_mesh, '0': duffy_logp_mesh, 'v': vivax_logp_mesh}
+    ui_dict = {'b': duffy_ui, '0': duffy_ui, 'v': vivax_ui}
+    
     # Create the mean & its evaluation at the data locations.
     init_OK = False
         
     covariate_key_dict = {'v': set(covariate_keys), 'b': ['africa'], '0':[]}        
     temporal_dict = {'b': False, '0': False, 'v': True}
     
-    p1_pymc = pm.Uniform('p1_pymc',0,.4,value=.1,observed=True)
-    
     init_OK = False
     while not init_OK:
         try:
-            spatial_vars = zipmap(lambda k: covariance_submodel(k, ra, data_mesh_dict[k], covariate_key_dict[k], np.arange(len(data_mesh)), input_data, temporal_dict[k]), ['b','0','v'])
+            spatial_vars = zipmap(lambda k: covariance_submodel(k, ra, logp_mesh_dict[k], covariate_key_dict[k], ui_dict[k], input_data, temporal_dict[k]), ['b','0','v'])
             tau = zipmap(lambda k: 1./spatial_vars[k]['V'], ['b','0','v'])
         
             # Loop over data clusters, adding nugget and applying link function.
@@ -436,21 +440,7 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     theano_likelihood_vivax = theano_binomial(vivax_pos[where_vivax], cur_n, p_vivax)
     
     theano_likelihood = theano_likelihood_prom + theano_likelihood_aphe + theano_likelihood_bphe + theano_likelihood_phe + theano_likelihood_gen + theano_likelihood_vivax
-    
-    @pm.deterministic(trace=False)
-    def full_conditional_params(M_blocks=[spatial_vars[k]['M'] for k in ['b','0','v']],
-                                Q_blocks=[spatial_vars[k]['Q'] for k in ['b','0','v']],
-                                p = theano_likelihood,
-                                x_blocks = [xb,x0,xv]):
-        return approximate_gaussian_full_conditional(M_blocks,Q_blocks,p,x_blocks)
-    
-    @pm.potential
-    def evidence(full_conditional_params=full_conditional_params,
-                    M_blocks=[spatial_vars[k]['M'] for k in ['b','0','v']],
-                    Q_blocks=[spatial_vars[k]['Q'] for k in ['b','0','v']]):
-        like_vals, like_covs, Mc_blocks, Qc_blocks = full_conditional_params
-        return gaussian_evidence(like_vals, like_covs, M_blocks, Q_blocks, Mc_blocks, Qc_blocks)
-    
+        
     if np.any(np.isnan(cur_obs)):
         raise ValueError
             
