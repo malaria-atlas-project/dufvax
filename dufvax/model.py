@@ -360,6 +360,43 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
             gc.collect()        
     
     V_b, V_0, V_v = [spatial_vars[k]['V'] for k in ['b','0','v']]    
+    
+    eps_p_f_d = {'b':[], '0':[], 'v':[]}
+    p_d = {'b':[], '0': [], 'v': []}
+    eps_p_f = {}
+        
+    # Duffy eps_p_f's and p's, eval'ed everywhere.
+    for k in ['b','0']:    
+        for i in xrange(int(np.ceil(len(n)/float(grainsize)))):
+            sl = slice(i*grainsize,(i+1)*grainsize,None)                
+            if sl.stop>sl.start:
+            
+                this_f = f[k][duffy_fi[sl]]
+
+                # Nuggeted field in this cluster
+                eps_p_f_d[k].append(pm.Normal('eps_p_f%s_%i'%(k,i), this_f, tau[k], value=np.random.normal(size=np.shape(this_f.value)), trace=False))
+        
+                # The allele frequency
+                p_d[k].append(pm.Lambda('p%s_%i'%(k,i),lambda lt=eps_p_f_d[k][-1]: invlogit(np.atleast_1d(lt)),trace=False))
+
+        # The fields plus the nugget
+        eps_p_f[k] = pm.Lambda('eps_p_f%s'%k, lambda eps_p_f_d=eps_p_f_d[k]: np.hstack(eps_p_f_d))
+        
+    # Vivax eps_p_f's and p's, only eval'ed on vivax points.
+    for i in xrange(int(np.ceil(len(n[where_vivax])/float(grainsize)))):
+        sl = slice(i*grainsize,(i+1)*grainsize,None)                
+        if sl.stop>sl.start:
+        
+            this_f = f['v'][vivax_fi[sl]]
+
+            # Nuggeted field in this cluster
+            eps_p_f_d['v'].append(pm.Normal('eps_p_fv_%i'%i, this_f, tau['v'], value=np.random.normal(size=np.shape(this_f.value)), trace=False))
+    
+            # The allele frequency
+            p_d['v'].append(pm.Lambda('p%s_%i'%(k,i),lambda lt=eps_p_f_d['v'][-1]: invlogit(np.atleast_1d(lt)),trace=False))
+
+    # The fields plus the nugget
+    eps_p_f['v'] = pm.Lambda('eps_p_fv', lambda eps_p_f_d=eps_p_f_d['v']: np.hstack(eps_p_f_d))
         
     warnings.warn('Not using age correction')
     # junk, splreps = age_corr_likelihoods(lo_age[where_vivax], up_age[where_vivax], vivax_pos[where_vivax], vivax_neg[where_vivax], 10000, np.arange(.01,1.,.01), a_pred, P_trace, S_trace, F_trace)
