@@ -80,20 +80,6 @@ else:
     amp_params = Af_amp_params
     disttol = 0./6378.
     ttol = 0.
-
-# TODO:
-# Get approximate evidence by using the INLA trick.
-# Grid the priors, Gibbs sample.
-
-def approximate_gaussian_full_conditional(M_blocks,Q_blocks,p,x_blocks):
-    like_vals = None
-    like_covs = None
-    Mc_blocks = None
-    Qc_blocks = None
-    return like_vals, like_covs, Mc_blocks, Qc_blocks
-
-def gaussian_evidence(like_vals, like_covs, M_blocks, Q_blocks, Mc_blocks, Qc_blocks):
-    return 0
     
 def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=False):
     """
@@ -177,16 +163,7 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=Fa
     @pm.deterministic(trace=False, name='M_%s'%suffix)
     def M():
         return pm.gp.Mean(pm.gp.zero_fn)
-    
-    @pm.deterministic(trace=False,name='C_eval_plus_nugget_%s'%suffix)
-    def C_eval_plus_nugget(C=C,V=V,mesh=mesh):
-        out=C(mesh,mesh)
-        return out + np.eye(out.shape[0])*V
-            
-    @pm.deterministic(trace=False,name='Q_%s'%suffix)
-    def Q(C_eval_plus_nugget=C_eval_plus_nugget):
-        return C_eval_plus_nugget.I
-    
+        
     return locals()
         
 # =========================
@@ -258,6 +235,73 @@ def zipmap(f, keys):
     return dict(zip(keys, map(f, keys)))
 
 x_test = np.array([[10,12,2,4],[30,2,14,6],[3,45,26,3]])
+
+def grad2(expr, wrt):
+    # FIXME: Mock.
+    return expr
+    
+class DufvaxStep(pm.AdaptiveMetropolis):
+    def __init__(self, sp_sub, nugget, field_plus_nugget, theano_to_pymc_fpns, theano_likelihood, delay=1000, interval=200, scales=None):
+        """
+        field_plus_nugget should be a Theano variable.
+        thean_to_pymc_fpns should be a map from Theano variables to PyMC variables.
+        """
+        self.sp_sub = sp_sub
+        self.nugget = nugget
+        self.theano_likelihood = theano_likelihood
+        self.prior_params = sp_sub.f_eval.extended_parents
+        self.field_plus_nugget = field_plus_nugget
+        self.theano_to_pymc_fpns = theano_to_pymc_fpns
+        self.name_to_pymc_fpns = dict([(k.name(), v) for k,v in theano_to_pymc_fpns.items()])
+        
+        self.likelihood_function = theano.function(theano_to_pymc_fpns.keys(), self.theano_likelihood)
+        self.grad1_function = theano.function(theano_to_pymc_fpns.keys(), T.grad(self.theano_likelihood, [field_plus_nugget]))
+        self.grad2_function = theano.function(theano_to_pymc_fpns.keys(), grad2(self.theano_likelihood, field_plus_nugget))
+        
+        self.field_plus_nugget = theano_to_pymc_fpns[field_plus_nugget]
+        
+        @pm.deterministic(trace=False)
+        def C_eval_plus_nugget(C=sp_sub.C,V=nugget,mesh=sp_sub.mesh):
+            out=C(mesh,mesh)
+            return out + np.eye(out.shape[0])*V
+
+        @pm.deterministic(trace=False)
+        def Q(C_eval_plus_nugget=C_eval_plus_nugget):
+            return C_eval_plus_nugget.I
+        
+        self.Q = Q
+        
+        pm.AdaptiveMetropolis.__init__(self, stochastic=list(self.prior_params))
+        
+    def _get_logp_plus_loglike(self):
+        sum = logp_of_set(self.prior_params) + self.evidence()
+        if self.verbose>2:
+            print '\t' + self._id + ' Current log-likelihood plus current log-probability', sum
+        return sum
+
+    # Make get property for retrieving log-probability
+    logp_plus_loglike = property(fget = _get_logp_plus_loglike, doc="The summed log-probability of all stochastic variables that depend on \n self.stochastics, and self.stochastics, but not the field or the nuggeted field.")
+    
+    def approximate_gaussian_full_conditional(self):
+        # FIXME: Mock.
+        like_vals = None
+        like_vars = None
+        Mc = None
+        Qc = None
+        return like_vals, like_vars, Mc, Qc
+        
+    def evidence(self):
+        # FIXME: Mock.
+        return 0
+    
+    def step(self):
+        from copy import copy
+        pm.AdaptiveMetropolis.step(self)
+        like_vals, like_vars, Mc, Qc = self.approximate_gaussian_full_conditional()
+        self.field_plus_nugget.value = pm.rmv_normal(Mc,Qc)
+        M, C = copy(self.sp_sub.M), copy(self.sp_sub.C)
+        pm.gp.observe(M,C,self.sp_sub.mesh,self.field_plus_nugget.value,obs_V=pm.utils.value(self.nugget))
+        self.sp_sub.f_eval.value = pm.rmv_normal_cov(M(self.sp_sub.mesh), C(self.sp_sub.mesh, self.sp_sub.mesh))
 
 #TODO: Cut both Duffy and Vivax    
 def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
