@@ -339,14 +339,26 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     theano_likelihood_bphe = theano_binomial(bpheb[where_bphe], cur_n, p_bphe)
         
     where_phe = np.where(datatype=='phe')
-    cur_obs = np.array([pheab[where_phe],phea[where_phe],pheb[where_phe],phe0[where_phe]])
+    cur_obs = np.array([pheab[where_phe],
+                        phea[where_phe],
+                        pheb[where_phe],
+                        phe0[where_phe]])
     cur_n = n[where_phe]
     np.testing.assert_equal(cur_n, np.sum(cur_obs, axis=0))
     theano_likelihood_phe = theano_multinomial(cur_obs, p_phe)
     
     where_gen = np.where(datatype=='gen')
     cur_n = n[where_gen]
-    cur_obs = np.array([genaa[where_gen],genab[where_gen],gena0[where_gen],gena1[where_gen],genbb[where_gen],genb0[where_gen],genb1[where_gen],gen00[where_gen],gen01[where_gen],gen11[where_gen]])
+    cur_obs = np.array([genaa[where_gen],
+                        genab[where_gen],
+                        gena0[where_gen],
+                        gena1[where_gen],
+                        genbb[where_gen],
+                        genb0[where_gen],
+                        genb1[where_gen],
+                        gen00[where_gen],
+                        gen01[where_gen],
+                        gen11[where_gen]])
     np.testing.assert_equal(cur_n, np.sum(cur_obs,axis=0))
     theano_likelihood_gen = theano_multinomial(cur_obs, p_gen)
     
