@@ -85,60 +85,59 @@ else:
     disttol = 0./6378.
     ttol = 0.
     
-def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, temporal=False):
+def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, fname, temporal=False):
     """
     A small function that creates the mean and covariance object
     of the random field.
     """
-    
-    # The partial sill.
-    amp = pm.Exponential('amp_%s'%suffix, .1, value=1.)
-    
-    # The range parameter. Units are RADIANS. 
-    # 1 radian = the radius of the earth, about 6378.1 km
-    # scale = pm.Exponential('scale', 1./.08, value=.08)
-    
-    scale = pm.Exponential('scale_%s'%suffix, .1, value=.08)
+
+    if not temporal:
+        mesh = mesh[:,:2]
+
+    # Subjective skew-normal prior on amp (the partial sill, tau) in log-space.
+    # Parameters are passed in in manual_MCMC_supervisor.
+    log_amp = pm.SkewNormal('log_amp_%s'%suffix,value=amp_params['mu'],**amp_params)
+    amp = pm.Lambda('amp_%s'%suffix, lambda log_amp = log_amp: np.exp(log_amp))
+
+    # Subjective skew-normal prior on scale (the range, phi_x) in log-space.
+    log_scale = pm.SkewNormal('log_scale_%s'%suffix,value=-1,**scale_params)
+    scale = pm.Lambda('scale_%s'%suffix, lambda log_scale = log_scale: np.exp(log_scale))
+
     # scale_shift = pm.Exponential('scale_shift_%s'%suffix, .1, value=.08)
     # scale = pm.Lambda('scale_%s'%suffix,lambda s=scale_shift: s+.01)
     scale_in_km = scale*6378.1
-    
+
     # This parameter controls the degree of differentiability of the field.
-    diff_degree = pm.Uniform('diff_degree_%s'%suffix, .5, 3)
-    
-    # The nugget variance. Lower-bounded to preserve mixing.
-    V = pm.Exponential('V_%s'%suffix, .1, value=1.)
-    
-    @pm.potential
-    def V_bound(V=V):
-        if V<.1:
-            return -np.inf
-        else:
-            return 0
-    
+    diff_degree = pm.Uniform('diff_degree_%s'%suffix, .1, 3, value=.5, observed=True)
+
+    # The nugget variance.
+    V = pm.Gamma('V_%s'%suffix, 4, 40, value=.1)
+
     if temporal:
         inc = 0
         ecc = 0
         # Exponential prior on the temporal scale/range, phi_t. Standard one-over-x
         # doesn't work bc data aren't strong enough to prevent collapse to zero.
-        scale_t = pm.Exponential('scale_t_%s'%suffix, .01,value=.1)
+        scale_t = pm.Exponential('scale_t_%s'%suffix, 5,value=1)
 
         # Uniform prior on limiting correlation far in the future or past.
-        t_lim_corr = pm.Uniform('t_lim_corr_%s'%suffix,0,1,value=.01)
+        t_lim_corr = pm.Uniform('t_lim_corr_%s'%suffix,0,1,value=.8)
 
         # # Uniform prior on sinusoidal fraction in temporal variogram
-        sin_frac = pm.Uniform('sin_frac_%s'%suffix,0,1,value=.01)
-        
+        sin_frac = pm.Uniform('sin_frac_%s'%suffix,0,1,value=.1)
+
         @pm.potential(name='st_constraint_%s'%suffix)
         def st_constraint(sd=.5, sf=sin_frac, tlc=t_lim_corr):    
             if -sd >= 1./(-sf*(1-tlc)+tlc):
                 return -np.Inf
             else:
                 return 0.
-        
-        covfac_pow = pm.Exponential('covfac_pow_%s'%suffix, .1, value=.5)
-        
+
+        # covfac_pow = pm.Exponential('covfac_pow_%s'%suffix, .1, value=.5)
+        covfac_pow = 0
+
         covariate_names = covariate_keys
+        @pm.observed
         @pm.stochastic(name='log_covfacs_%s'%suffix)
         def log_covfacs(value=-np.ones(len(covariate_names))*.01, k=covfac_pow):
             """Induced prior on covfacs is p(x)=(1+k)(1-x)^k, x\in [0,1]"""
@@ -146,36 +145,44 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, temporal=False):
                 return np.sum(value+np.log(1+k)+k*np.log(1-np.exp(value)))
             else:
                 return -np.inf
-        
+
         # covfacs are uniformly distributed on [0,1]        
         covfacs = pm.Lambda('covfacs_%s'%suffix, lambda x=log_covfacs: np.exp(x))
-                
-        @pm.deterministic(trace=True,name='C_%s'%suffix)
-        def C(amp=amp,scale=scale,inc=inc,ecc=ecc,scale_t=scale_t, t_lim_corr=t_lim_corr, sin_frac=sin_frac, diff_degree=diff_degree, covfacs=covfacs, covariate_keys=covariate_keys, ra=ra):
+
+        @pm.deterministic(trace=False,name='C_%s'%suffix)
+        def C(amp=amp,scale=scale,inc=inc,ecc=ecc,scale_t=scale_t, t_lim_corr=t_lim_corr, sin_frac=sin_frac, diff_degree=diff_degree, covfacs=covfacs, covariate_keys=covariate_keys, ra=ra, mesh=mesh, ui=ui):
             facdict = dict([(k,1.e2*covfacs[i]) for i,k in enumerate(covariate_keys)])
             facdict['m'] = 1.e6
-            eval_fun = CovarianceWithCovariates(my_st, mesh, covariate_keys, ui, fac=facdict, ra=ra)
+            eval_fun = CovarianceWithCovariates(my_st, fname, covariate_keys, ui, fac=facdict, ra=ra)
             return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, inc=inc, ecc=ecc,st=scale_t, sd=diff_degree, tlc=t_lim_corr, sf = sin_frac)
-                                            
+
     else:
         # Create the covariance & its evaluation at the data locations.
-        @pm.deterministic(trace=True,name='C_%s'%suffix)
-        def C(amp=amp, scale=scale, diff_degree=diff_degree, covariate_keys=covariate_keys, ra=ra):
-            eval_fun = CovarianceWithCovariates(strip_time(pm.gp.matern.geo_rad), mesh, covariate_keys, ui, fac=1.e4, ra=ra)
+        @pm.deterministic(trace=False,name='C_%s'%suffix)
+        def C(amp=amp, scale=scale, diff_degree=diff_degree, covariate_keys=covariate_keys, ra=ra, mesh=mesh, ui=ui):
+            eval_fun = CovarianceWithCovariates(strip_time(pm.gp.matern.geo_rad), fname, covariate_keys, ui, fac=1.e4, ra=ra)
             return pm.gp.FullRankCovariance(eval_fun, amp=amp, scale=scale, diff_degree=diff_degree)
-    
+
     # Create the mean function    
-    @pm.deterministic(trace=True, name='M_%s'%suffix)
+    @pm.deterministic(trace=False, name='M_%s'%suffix)
     def M():
         return pm.gp.Mean(pm.gp.zero_fn)
-    
+
     # Create the GP submodel    
-    sp_sub = pm.gp.GPSubmodel('sp_sub_%s'%suffix,M,C,mesh)
+    sp_sub = pm.gp.GPSubmodel('sp_sub_%s'%suffix,M,C,mesh,tally_f=False)
     sp_sub.f.trace=False
     sp_sub.f_eval.value = sp_sub.f_eval.value - sp_sub.f_eval.value.mean()    
-    
+    sp_sub.temporal = temporal
+
     return locals()
 
+def grads(expr, x, all_inputs):
+    from copy import copy
+    other_inputs = copy(all_inputs)
+    other_inputs.remove(x)
+    grad1 = T.grad(expr, x)
+    grad2, _ = theano.scan(fn=lambda i, x, grad1, *other_inputs: T.grad(grad1[i], x)[i], sequences=T.arange(x.shape[0]), non_sequences=[x, grad1]+other_inputs)
+    return [grad1, grad2]
     
 class DufvaxStep(pm.AdaptiveMetropolis):
     def __init__(self, sp_sub, data_mesh, nugget, field_plus_nugget, theano_to_pymc_fpns, theano_likelihood, delay=1000, interval=200, scales=None):
@@ -187,17 +194,17 @@ class DufvaxStep(pm.AdaptiveMetropolis):
         self.nugget = nugget
         self.theano_likelihood = theano_likelihood
         self.prior_params = sp_sub.f_eval.extended_parents
-        self.field_plus_nugget = field_plus_nugget
         self.theano_to_pymc_fpns = theano_to_pymc_fpns
-        self.name_to_pymc_fpns = dict([(k.name(), v) for k,v in theano_to_pymc_fpns.items()])
+        self.name_to_pymc_fpns = dict([(k.name, v) for k,v in theano_to_pymc_fpns.items()])
         self.data_mesh = data_mesh
         
         self.likelihood_function = tfun(theano_to_pymc_fpns.keys(), theano_likelihood)
-        self.grad_function = tfun(theano_to_pymc_fpns.keys(), grads(theano_likelihood, field_plus_nugget))        
+        grads_out = grads(theano_likelihood, field_plus_nugget, theano_to_pymc_fpns.keys())
+        self.grad_function = tfun(theano_to_pymc_fpns.keys(), grads_out)        
         self.field_plus_nugget = theano_to_pymc_fpns[field_plus_nugget]
         
         @pm.deterministic(trace=False)
-        def C_eval_plus_nugget(C=sp_sub.C,V=nugget,mesh=sp_sub.mesh):
+        def C_eval_plus_nugget(C=sp_sub.C,V=nugget,mesh=data_mesh):
             out=C(mesh,mesh)
             return out + np.eye(out.shape[0])*V
 
@@ -210,7 +217,7 @@ class DufvaxStep(pm.AdaptiveMetropolis):
         pm.AdaptiveMetropolis.__init__(self, stochastic=list(self.prior_params))
         
     def _get_logp_plus_loglike(self):
-        sum = logp_of_set(self.prior_params) + self.evidence()
+        sum = pm.logp_of_set(self.prior_params) + self.evidence()
         if self.verbose>2:
             print '\t' + self._id + ' Current log-likelihood plus current log-probability', sum
         return sum
@@ -222,8 +229,8 @@ class DufvaxStep(pm.AdaptiveMetropolis):
         # FIXME: Mock.
         like_vals = None
         like_vars = None
-        Mc = None
-        Qc = None
+        Mc = np.random.normal(size=len(self.data_mesh))
+        Qc = np.eye(len(self.data_mesh))
         return like_vals, like_vars, Mc, Qc
         
     def evidence(self):
@@ -235,10 +242,13 @@ class DufvaxStep(pm.AdaptiveMetropolis):
         pm.AdaptiveMetropolis.step(self)
         like_vals, like_vars, Mc, Qc = self.approximate_gaussian_full_conditional()
         self.field_plus_nugget.value = pm.rmv_normal(Mc,Qc)
-        M, C = copy(self.sp_sub.M), copy(self.sp_sub.C)
-        pm.gp.observe(M,C,self.data_mesh,self.field_plus_nugget.value,obs_V=pm.utils.value(self.nugget))
-        
-        # FIXME: Use the fi's.
+        M, C = copy(self.sp_sub.M.value), copy(self.sp_sub.C.value)
+        if self.sp_sub.temporal:
+            obs_mesh = self.data_mesh
+        else:
+            obs_mesh = self.data_mesh[:,:2]
+        pm.gp.observe(M,C,obs_mesh,self.field_plus_nugget.value,obs_V=pm.utils.value(self.nugget))
+    
         self.sp_sub.f_eval.value = pm.rmv_normal_cov(M(self.sp_sub.mesh), C(self.sp_sub.mesh, self.sp_sub.mesh))
 
 def theano_invlogit(x):
@@ -248,7 +258,10 @@ def theano_binomial(k, n, p):
     return T.sum(k*T.log(p) + (n-k)*T.log(1-p))
 
 def theano_multinomial(x,p):
-    return T.sum(T.dot(np.asarray(x),T.log(p)))
+    # FIXME: TEST THIS CAREFULLY!
+    # DO NOT USE theano.dot. It will not work.
+    n = x.shape[1]
+    return T.sum([T.dot(T.log(p[i]),x[:,i]) for i in xrange(n)])
 
 def likelihood_expression_to_potential(name, expr, x_theano, x_pymc):
     expr_fn = tfun(expr, x_theano)
@@ -261,6 +274,7 @@ def zipmap(f, keys):
     return dict(zip(keys, map(f, keys)))
 
 def incorporate_zeros(obs, n, predicate):
+    "Where data is missing, set observation = n = 0."
     n_new = n.copy()
     obs_new = obs.copy()
     n_new[np.where(True-predicate)]=0
@@ -290,7 +304,19 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     # Vivax only needs to be modelled where Vivax is observed.
     # Complication: Vivax can have multiple co-located observations at different times,
     # all corresponding to the same Duffy observation.
-    data_mesh, logp_mesh, fi, ui, ti = generic_mbg.uniquify_tol(disttol,ttol,lon,lat)
+    print 'Uniquifying.'
+    duffy_data_mesh, duffy_logp_mesh, duffy_fi, duffy_ui, duffy_ti = uniquify_tol(disttol,ttol,lon,lat)
+    duffy_data_mesh = np.hstack((duffy_data_mesh, np.atleast_2d(t).T))
+    duffy_logp_mesh = np.hstack((duffy_logp_mesh, np.atleast_2d(t[duffy_ui]).T))
+    vivax_data_mesh, vivax_logp_mesh, vivax_fi, vivax_ui, vivax_ti = uniquify_tol(disttol,ttol,lon[where_vivax],lat[where_vivax],t[where_vivax])
+    
+    print 'Done uniquifying.'
+    
+    duffy_data_locs = map(tuple,duffy_data_mesh[:,:2])
+    vivax_data_locs = map(tuple,vivax_data_mesh[:,:2])
+    
+    full_vivax_ui = np.arange(len(lon))[where_vivax][vivax_ui]
+
     
     # =========================
     # = Haplotype frequencies =
@@ -298,6 +324,7 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     xb = T.dvector('xb')
     x0 = T.dvector('x0')
     xv = T.dvector('xv')
+    x_dict = {'b': xb, '0': x0, 'v': xv}
     p1 = .01
 
     pb = theano_invlogit(xb)
@@ -322,34 +349,32 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
                 g_freqs[hfk[i]+hfk[j]] = 2 * hfv[i] * hfv[j]
             else:
                 g_freqs[hfk[i]*2] = hfv[i]**2
-                
-    g_freqs_fns = {}
-    for k,v in g_freqs.items():
-        g_freqs_fns[k] = tfun([pb,p0], v)
 
-    p_prom = (pb*p0+(1-pb)*p1)**2
-    p_aphe = 1-(1-(1-pb)*(1-p1))**2
-    p_bphe = 1-(1-pb*(1-p0))**2
+    p_prom = (h_freqs['0']+h_freqs['1'])**2
+    p_aphe = 1-(1-h_freqs['a'])**2
+    p_bphe = 1-(1-h_freqs['b'])**2
     p_phe = [\
         g_freqs['ab'],
         g_freqs['a0']+g_freqs['a1']+g_freqs['aa'],
         g_freqs['b0']+g_freqs['b1']+g_freqs['bb'],
         g_freqs['00']+g_freqs['01']+g_freqs['11']]    
-    p_gen = [g_freqs[key] for key in ['aa','ab','a0','a1','bb','b0','b1','00','01','11']]
-    pphe0 = g_freqs['00']+g_freqs['01']+g_freqs['11']
-    # FIXME: Theano cannot accept 'wheres'
-    p_vivax = pv*(1-pphe0)
+    gfreq_keys = ['aa','ab','a0','a1','bb','b0','b1','00','01','11']
+    p_gen = [g_freqs[key] for key in gfreq_keys]
+    p_vivax = pv*(1-p_prom)
         
     # Create the mean & its evaluation at the data locations.
     init_OK = False
         
     covariate_key_dict = {'v': set(covariate_keys), 'b': ['africa'], '0':[]}        
+    ui_dict = {'v': full_vivax_ui, 'b': duffy_ui, '0': duffy_ui}
+    logp_mesh_dict = {'b': duffy_logp_mesh, '0': duffy_logp_mesh, 'v': vivax_logp_mesh}
+    data_mesh_dict = {'b': duffy_data_mesh, '0': duffy_data_mesh, 'v': vivax_data_mesh}
     temporal_dict = {'b': False, '0': False, 'v': True}
     
     init_OK = False
     while not init_OK:
         try:
-            spatial_vars = zipmap(lambda k: covariance_submodel(k, ra, logp_mesh, covariate_key_dict[k], ui, input_data, temporal_dict[k]), ['b','0','v'])
+            spatial_vars = zipmap(lambda k: covariance_submodel(k, ra, logp_mesh_dict[k], covariate_key_dict[k], ui_dict[k], input_data, temporal_dict[k]), ['b','0','v'])
             tau = zipmap(lambda k: 1./spatial_vars[k]['V'], ['b','0','v'])
         
             # Loop over data clusters, adding nugget and applying link function.
@@ -365,21 +390,19 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
         
     # Duffy eps_p_f's and p's, eval'ed everywhere.
     for k in ['b','0','v']:    
+        
+        if k in ['b','0']:
+            fi = duffy_fi
+            data_mesh = duffy_data_mesh
+        else:
+            fi = vivax_fi
+            data_mesh = vivax_data_mesh
+        
         # Nuggeted field
         eps_p_f[k] = pm.Normal('eps_p_f_%s'%k, spatial_vars[k]['sp_sub'].f_eval[fi], tau[k], value=np.random.normal(size=len(data_mesh)), trace=False)
 
-        # The allele frequency
-        p[k] = pm.InvLogit('p_%s'%k,eps_p_f[k])
-                    
     warnings.warn('Not using age correction')
-    # junk, splreps = age_corr_likelihoods(lo_age[where_vivax], up_age[where_vivax], vivax_pos[where_vivax], vivax_neg[where_vivax], 10000, np.arange(.01,1.,.01), a_pred, P_trace, S_trace, F_trace)
-    # for i in xrange(len(splreps)):
-    #     splreps[i] = list(splreps[i])
-    splreps = [None]*len(where_vivax[0])
-    
-    import pdb
-    pdb.set_trace
-    
+            
     cur_obs, cur_n = incorporate_zeros(prom0, n, datatype=='prom')
     # Need to have either b and 0 or a and 1 on both chromosomes    
     theano_likelihood_prom = theano_binomial(cur_obs, cur_n, p_prom)
@@ -390,31 +413,36 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
         
     cur_obs, cur_n = incorporate_zeros(bpheb, n, datatype=='bphe')
     # Need to have (b and not 0) on either chromosome
-    theano_likelihood_aphe = theano_binomial(cur_obs, cur_n, p_bphe)
+    theano_likelihood_bphe = theano_binomial(cur_obs, cur_n, p_bphe)
         
-    cur_obs, cur_n = incorporate_zeros(np.array([pheab[where_phe],
-                        phea[where_phe],
-                        pheb[where_phe],
-                        phe0[where_phe]]).T, n, datatype=='phe')
+    cur_obs, cur_n = incorporate_zeros(np.array([pheab,
+                        phea,
+                        pheb,
+                        phe0]).T, n, datatype=='phe')
     theano_likelihood_phe = theano_multinomial(cur_obs, p_phe)
+    
+    print T.grad(T.grad(theano_likelihood_phe, x0)[0],x0)
         
-    cur_obs, cur_n = incorporate_zeros(np.array([genaa[where_gen],
-                        genab[where_gen],
-                        gena0[where_gen],
-                        gena1[where_gen],
-                        genbb[where_gen],
-                        genb0[where_gen],
-                        genb1[where_gen],
-                        gen00[where_gen],
-                        gen01[where_gen],
-                        gen11[where_gen]]).T, n, datatype=='gen')
+    cur_obs, cur_n = incorporate_zeros(np.array([genaa,
+                        genab,
+                        gena0,
+                        gena1,
+                        genbb,
+                        genb0,
+                        genb1,
+                        gen00,
+                        gen01,
+                        gen11]).T, n, datatype=='gen')
     theano_likelihood_gen = theano_multinomial(cur_obs, p_gen)
+    
+    print T.grad(T.grad(theano_likelihood_gen, x0)[0],x0)
     
     # Now vivax.
     cur_obs, cur_n = incorporate_zeros(vivax_pos, n, datatype=='vivax')
-    theano_likelihood_vivax = theano_binomial(cur_obs, cur_n, p_vivax)
+    theano_vivax_likelihood_for_duffy = theano_binomial(cur_obs, cur_n, p_vivax)
+    theano_vivax_likelihood_for_vivax = theano_binomial(cur_obs[where_vivax], cur_n[where_vivax], p_vivax)
     
-    theano_likelihood = theano_likelihood_prom + theano_likelihood_aphe + theano_likelihood_bphe + theano_likelihood_phe + theano_likelihood_gen + theano_likelihood_vivax
+    theano_duffy_likelihood = theano_likelihood_prom + theano_likelihood_aphe + theano_likelihood_bphe + theano_likelihood_phe + theano_likelihood_gen
         
     if np.any(np.isnan(cur_obs)):
         raise ValueError

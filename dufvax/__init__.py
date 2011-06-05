@@ -144,9 +144,40 @@ metadata_keys = ['disttol','ttol']
 
 def mcmc_init(M):
     from model import DufvaxStep, zipmap
-    for suffix in ['b','0','v']:
-        sv = M.spatial_vars[k]
-        M.use_step_method(DufvaxStep, sv['sp_sub'], M.data_mesh, sv['V'], M.eps_p_f['k'], {M.xb: M.eps_p_f['b'], M.x0: M.eps_p_f['0'], M.xv: M.eps_p_f['v']}, M.theano_likelihood, delay=1000, interval=200, scales=None)
+    
+    @pm.deterministic(trace=False)
+    def vivax_expanded(x=M.eps_p_f['v'], pred=M.datatype=='vivax', N=len(M.duffy_data_mesh)):
+        "Pads the vivax eps_p_fs with zeros. The vivax likelihood will ignore them anyway."
+        out = np.empty(N)
+        out[np.where(pred)] = x
+        out[np.where(True-pred)] = 0
+        return out
+    
+    print 'Initializing step methods.'
+    for k in ['b','0','v']:
+
+        if k in ['b','0']:
+            theano_to_pymc_fpn = {M.xb: M.eps_p_f['b'], 
+                                    M.x0: M.eps_p_f['0'], 
+                                    M.xv: vivax_expanded}
+            theano_likelihood = M.theano_duffy_likelihood + M.theano_vivax_likelihood_for_duffy
+        else:
+            theano_to_pymc_fpn = {M.xb: M.eps_p_f['b'][M.where_vivax], 
+                                    M.x0: M.eps_p_f['0'][M.where_vivax], 
+                                    M.xv: M.eps_p_f['v']}
+            theano_likelihood = M.theano_vivax_likelihood_for_vivax
+
+        M.use_step_method(DufvaxStep, 
+                            M.spatial_vars[k]['sp_sub'], 
+                            M.data_mesh_dict[k], 
+                            M.spatial_vars[k]['V'], 
+                            M.x_dict[k], 
+                            theano_to_pymc_fpn, 
+                            theano_likelihood, 
+                            delay=1000, interval=200, scales=None)
+    print 'Done initializing step methods.'
+
+    
 
 non_cov_columns = { 'n': 'int',
                     'datatype': 'str',
