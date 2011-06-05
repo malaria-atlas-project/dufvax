@@ -190,6 +190,8 @@ class DufvaxStep(pm.AdaptiveMetropolis):
         field_plus_nugget should be a Theano variable.
         thean_to_pymc_fpns should be a map from Theano variables to PyMC variables.
         """
+        from copy import copy
+
         self.sp_sub = sp_sub
         self.nugget = nugget
         self.theano_likelihood = theano_likelihood
@@ -198,7 +200,10 @@ class DufvaxStep(pm.AdaptiveMetropolis):
         self.name_to_pymc_fpns = dict([(k.name, v) for k,v in theano_to_pymc_fpns.items()])
         self.data_mesh = data_mesh
         
-        self.likelihood_function = tfun(theano_to_pymc_fpns.keys(), theano_likelihood)
+        other_keys = copy(theano_to_pymc_fpns.keys())
+        other_keys.remove(field_plus_nugget)
+        
+        self.likelihood_function = tfun([field_plus_nugget]+other_keys, theano_likelihood)
         grads_out = grads(theano_likelihood, field_plus_nugget, theano_to_pymc_fpns.keys())
         self.grad_function = tfun(theano_to_pymc_fpns.keys(), grads_out)        
         self.field_plus_nugget = theano_to_pymc_fpns[field_plus_nugget]
@@ -206,41 +211,56 @@ class DufvaxStep(pm.AdaptiveMetropolis):
         @pm.deterministic(trace=False)
         def C_eval_plus_nugget(C=sp_sub.C,V=nugget,mesh=data_mesh):
             out=C(mesh,mesh)
-            return out + np.eye(out.shape[0])*V
+            return np.asmatrix(out + np.eye(out.shape[0])*V)
 
         @pm.deterministic(trace=False)
         def Q(C_eval_plus_nugget=C_eval_plus_nugget):
             return C_eval_plus_nugget.I
+
+        other_x={}
+        for k in other_keys:
+            other_x[k.name] = theano_to_pymc_fpns[k]
+        @pm.deterministic(trace=False)
+        def approximate_gaussian_full_conditional(M=sp_sub.M_eval, Q=Q, gf=self.grad_function, other_x=other_x, tol=1.e-8):
+            from scipy import linalg
+            x=M
+            delta = x*0+np.inf
+            
+            while np.abs(delta).max() > tol:
+                d1, d2 = gf(x,**other_x)
+                grad2 = d1-np.ravel(Q*(x-M))
+                Q_ = np.asmatrix(Q-np.diag(d2))
+                delta, precision_products = linalg.solve(Q_,grad2)
+                x = x + delta
+                
+            like_vals = -d1/d2+x-delta
+            # return like_vals, like_vars, Mc, Qc
+            return like_vals,-1/d2,x,Q_            
+        
+        @pm.deterministic(trace=False)
+        def evidence(agfc=approximate_gaussian_full_conditional, M=sp_sub.M_eval, C=C_eval_plus_nugget):
+            like_vals, like_vars, Mc, Qc = agfc
+            return pm.mv_normal_cov_like(like_vals, M, np.asarray(C)+np.diag(like_vars))
         
         self.Q = Q
+        self.approximate_gaussian_full_conditional = approximate_gaussian_full_conditional
+        self.evidence = evidence
         
         pm.AdaptiveMetropolis.__init__(self, stochastic=list(self.prior_params))
         
     def _get_logp_plus_loglike(self):
-        sum = pm.logp_of_set(self.prior_params) + self.evidence()
+        sum = pm.logp_of_set(self.prior_params) + self.evidence.value
         if self.verbose>2:
             print '\t' + self._id + ' Current log-likelihood plus current log-probability', sum
         return sum
 
     # Make get property for retrieving log-probability
     logp_plus_loglike = property(fget = _get_logp_plus_loglike, doc="The summed log-probability of all stochastic variables that depend on \n self.stochastics, and self.stochastics, but not the field or the nuggeted field.")
-    
-    def approximate_gaussian_full_conditional(self):
-        # FIXME: Mock.
-        like_vals = None
-        like_vars = None
-        Mc = np.random.normal(size=len(self.data_mesh))
-        Qc = np.eye(len(self.data_mesh))
-        return like_vals, like_vars, Mc, Qc
-        
-    def evidence(self):
-        # FIXME: Mock.
-        return 0
-    
+            
     def step(self):
         from copy import copy
         pm.AdaptiveMetropolis.step(self)
-        like_vals, like_vars, Mc, Qc = self.approximate_gaussian_full_conditional()
+        like_vals, like_vars, Mc, Qc = self.approximate_gaussian_full_conditional.value
         self.field_plus_nugget.value = pm.rmv_normal(Mc,Qc)
         M, C = copy(self.sp_sub.M.value), copy(self.sp_sub.C.value)
         if self.sp_sub.temporal:
