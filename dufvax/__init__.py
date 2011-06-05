@@ -4,7 +4,6 @@ ttol = 0./12
 
 import tables as tb
 import numpy as np
-from model import DufvaxStep
 # import history_steps
 
 modis_covariates = ['raw_data_elevation_geographic_world_version_5','daytime_land_temp_mean_geographic_world_2001_to_2006','daytime_land_temp_annual_amplitude_geographic_world_2001_to_2006','daytime_land_temp_triannual_amplitude_geographic_world_2001_to_2006','daytime_land_temp_biannual_amplitude_geographic_world_2001_to_2006']
@@ -34,8 +33,8 @@ except:
     print 'Could not open age-pr files'
     P_trace, S_trace, F_trace = [None]*3
 
-from model import *
 from pymc import thread_partition_array
+from model import make_model
 import dufvax
 from postproc_utils import *
 import pymc as pm
@@ -144,9 +143,10 @@ def validate_postproc(**non_cov_columns):
 metadata_keys = ['disttol','ttol']
 
 def mcmc_init(M):
+    from model import DufvaxStep, zipmap
     for suffix in ['b','0','v']:
         sv = M.spatial_vars[k]
-        M.use_step_method(DufvaxStep, sv['sp_sub'], M.data_mesh_dict[k], sv['V'], M.eps_p_f['k'], M.theano_to_pymc_fpns, M.theano_likelihood, delay=1000, interval=200, scales=None)
+        M.use_step_method(DufvaxStep, sv['sp_sub'], M.data_mesh, sv['V'], M.eps_p_f['k'], {M.xb: M.eps_p_f['b'], M.x0: M.eps_p_f['0'], M.xv: M.eps_p_f['v']}, M.theano_likelihood, delay=1000, interval=200, scales=None)
 
 non_cov_columns = { 'n': 'int',
                     'datatype': 'str',

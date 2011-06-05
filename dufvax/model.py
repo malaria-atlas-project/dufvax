@@ -28,12 +28,16 @@ from generic_mbg import *
 from st_cov_fun import *
 import generic_mbg
 import warnings
-# from agecorr import age_corr_likelihoods
-from dufvax import P_trace, S_trace, F_trace, a_pred
+try:
+    # from agecorr import age_corr_likelihoods
+    from dufvax import P_trace, S_trace, F_trace, a_pred
+except:
+    pass
 from scipy import interpolate as interp
 import scipy
 from pylab import csv2rec
 from theano import tensor as T
+from theano import function as tfun
 import theano
 
 __all__ = ['make_model']
@@ -171,79 +175,7 @@ def covariance_submodel(suffix, ra, mesh, covariate_keys, ui, temporal=False):
     sp_sub.f_eval.value = sp_sub.f_eval.value - sp_sub.f_eval.value.mean()    
     
     return locals()
-            
-# =========================
-# = Haplotype frequencies =
-# =========================
-xb = T.dvector('xb')
-x0 = T.dvector('x0')
-xv = T.dvector('xv')
-p1 = .01
 
-def theano_invlogit(x):
-    return T.exp(x)/(T.exp(x)+1)
-
-pb = theano_invlogit(xb)
-p0 = theano_invlogit(x0)
-# FIXME: This should be the age-correction business.
-pv = theano_invlogit(xv)
-
-h_freqs = {'a': (1-pb)*(1-p1),
-            'b': pb*(1-p0),
-            '0': pb*p0,
-            '1': (1-pb)*p1}
-hfk = ['a','b','0','1']
-hfv = [h_freqs[key] for key in hfk]
-
-# ========================
-# = Genotype frequencies =
-# ========================
-g_freqs = {}
-for i in xrange(4):
-    for j in xrange(i,4):
-        if i != j:
-            g_freqs[hfk[i]+hfk[j]] = 2 * hfv[i] * hfv[j]
-        else:
-            g_freqs[hfk[i]*2] = hfv[i]**2
-        
-g_freqs_fns = dict([(k,theano.function([pb,p0,p1], v)) for k,v in g_freqs.items()])
-for i in xrange(1000):
-    pb_,p0_,p1_ = np.random.random(size=3)
-    np.testing.assert_almost_equal(np.sum([gfi([pb_],[p0_],p1_) for gfi in g_freqs_fns.values()]),1.)
-
-p_prom = (pb*p0+(1-pb)*p1)**2
-p_aphe = 1-(1-(1-pb)*(1-p1))**2
-p_bphe = 1-(1-pb*(1-p0))**2
-p_phe = [\
-    g_freqs['ab'],
-    g_freqs['a0']+g_freqs['a1']+g_freqs['aa'],
-    g_freqs['b0']+g_freqs['b1']+g_freqs['bb'],
-    g_freqs['00']+g_freqs['01']+g_freqs['11']]    
-p_gen = [g_freqs[key] for key in ['aa','ab','a0','a1','bb','b0','b1','00','01','11']]
-pphe0 = g_freqs['00']+g_freqs['01']+g_freqs['11']
-
-def theano_binomial(k, n, p):
-    return T.sum(k*T.log(p) + (n-k)*T.log(1-p))
-    
-def theano_multinomial(x,p):
-    N = len(x)
-    return T.sum(T.dot(T.log(p),np.asarray(x)))
-    
-def likelihood_expression_to_potential(name, expr, x_theano, x_pymc):
-    expr_fn = theano.function(expr, x_theano)
-    @pm.Potential(name=name)
-    def pot(x=x_pymc, expr_fn=expr_fn):
-        return expr_fn(*x)
-    return pot
-
-def zipmap(f, keys):
-    return dict(zip(keys, map(f, keys)))
-
-x_test = np.array([[10,12,2,4],[30,2,14,6],[3,45,26,3]])
-
-def grad2(expr, wrt):
-    # FIXME: Mock.
-    return expr
     
 class DufvaxStep(pm.AdaptiveMetropolis):
     def __init__(self, sp_sub, data_mesh, nugget, field_plus_nugget, theano_to_pymc_fpns, theano_likelihood, delay=1000, interval=200, scales=None):
@@ -260,10 +192,8 @@ class DufvaxStep(pm.AdaptiveMetropolis):
         self.name_to_pymc_fpns = dict([(k.name(), v) for k,v in theano_to_pymc_fpns.items()])
         self.data_mesh = data_mesh
         
-        self.likelihood_function = theano.function(theano_to_pymc_fpns.keys(), self.theano_likelihood)
-        self.grad1_function = theano.function(theano_to_pymc_fpns.keys(), T.grad(self.theano_likelihood, [field_plus_nugget]))
-        self.grad2_function = theano.function(theano_to_pymc_fpns.keys(), grad2(self.theano_likelihood, field_plus_nugget))
-        
+        self.likelihood_function = tfun(theano_to_pymc_fpns.keys(), theano_likelihood)
+        self.grad_function = tfun(theano_to_pymc_fpns.keys(), grads(theano_likelihood, field_plus_nugget))        
         self.field_plus_nugget = theano_to_pymc_fpns[field_plus_nugget]
         
         @pm.deterministic(trace=False)
@@ -311,6 +241,33 @@ class DufvaxStep(pm.AdaptiveMetropolis):
         # FIXME: Use the fi's.
         self.sp_sub.f_eval.value = pm.rmv_normal_cov(M(self.sp_sub.mesh), C(self.sp_sub.mesh, self.sp_sub.mesh))
 
+def theano_invlogit(x):
+    return T.exp(x)/(T.exp(x)+1)
+
+def theano_binomial(k, n, p):
+    return T.sum(k*T.log(p) + (n-k)*T.log(1-p))
+
+def theano_multinomial(x,p):
+    return T.sum(T.dot(np.asarray(x),T.log(p)))
+
+def likelihood_expression_to_potential(name, expr, x_theano, x_pymc):
+    expr_fn = tfun(expr, x_theano)
+    @pm.Potential(name=name)
+    def pot(x=x_pymc, expr_fn=expr_fn):
+        return expr_fn(*x)
+    return pot
+
+def zipmap(f, keys):
+    return dict(zip(keys, map(f, keys)))
+
+def incorporate_zeros(obs, n, predicate):
+    n_new = n.copy()
+    obs_new = obs.copy()
+    n_new[np.where(True-predicate)]=0
+    obs_new[np.where(True-predicate)]=0
+    return obs_new, n_new
+    
+
 #TODO: Cut both Duffy and Vivax    
 def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
                 genaa,genab,genbb,gen00,gena0,genb0,gena1,genb1,gen01,gen11,
@@ -333,15 +290,56 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     # Vivax only needs to be modelled where Vivax is observed.
     # Complication: Vivax can have multiple co-located observations at different times,
     # all corresponding to the same Duffy observation.
-    duffy_data_mesh, duffy_logp_mesh, duffy_fi, duffy_ui, duffy_ti = generic_mbg.uniquify_tol(disttol,ttol,lon,lat)
-    duffy_data_mesh = np.hstack((duffy_data_mesh, np.atleast_2d(t).T))
-    duffy_logp_mesh = np.hstack((duffy_logp_mesh, np.atleast_2d(t[duffy_ui]).T))
-    vivax_data_mesh, vivax_logp_mesh, vivax_fi, vivax_ui, vivax_ti = generic_mbg.uniquify_tol(disttol,ttol,lon[where_vivax],lat[where_vivax],t[where_vivax])
+    data_mesh, logp_mesh, fi, ui, ti = generic_mbg.uniquify_tol(disttol,ttol,lon,lat)
     
-    data_mesh_dict = {'b': duffy_data_mesh, '0': duffy_data_mesh, 'v': vivax_data_mesh}
-    logp_mesh_dict = {'b': duffy_logp_mesh, '0': duffy_logp_mesh, 'v': vivax_logp_mesh}
-    ui_dict = {'b': duffy_ui, '0': duffy_ui, 'v': vivax_ui}
-    
+    # =========================
+    # = Haplotype frequencies =
+    # =========================
+    xb = T.dvector('xb')
+    x0 = T.dvector('x0')
+    xv = T.dvector('xv')
+    p1 = .01
+
+    pb = theano_invlogit(xb)
+    p0 = theano_invlogit(x0)
+    # FIXME: This should be the age-correction business.
+    pv = theano_invlogit(xv)
+
+    h_freqs = {'a': (1-pb)*(1-p1),
+                'b': pb*(1-p0),
+                '0': pb*p0,
+                '1': (1-pb)*p1}
+    hfk = ['a','b','0','1']
+    hfv = [h_freqs[key] for key in hfk]
+
+    # ========================
+    # = Genotype frequencies =
+    # ========================
+    g_freqs = {}
+    for i in xrange(4):
+        for j in xrange(i,4):
+            if i != j:
+                g_freqs[hfk[i]+hfk[j]] = 2 * hfv[i] * hfv[j]
+            else:
+                g_freqs[hfk[i]*2] = hfv[i]**2
+                
+    g_freqs_fns = {}
+    for k,v in g_freqs.items():
+        g_freqs_fns[k] = tfun([pb,p0], v)
+
+    p_prom = (pb*p0+(1-pb)*p1)**2
+    p_aphe = 1-(1-(1-pb)*(1-p1))**2
+    p_bphe = 1-(1-pb*(1-p0))**2
+    p_phe = [\
+        g_freqs['ab'],
+        g_freqs['a0']+g_freqs['a1']+g_freqs['aa'],
+        g_freqs['b0']+g_freqs['b1']+g_freqs['bb'],
+        g_freqs['00']+g_freqs['01']+g_freqs['11']]    
+    p_gen = [g_freqs[key] for key in ['aa','ab','a0','a1','bb','b0','b1','00','01','11']]
+    pphe0 = g_freqs['00']+g_freqs['01']+g_freqs['11']
+    # FIXME: Theano cannot accept 'wheres'
+    p_vivax = pv*(1-pphe0)
+        
     # Create the mean & its evaluation at the data locations.
     init_OK = False
         
@@ -351,7 +349,7 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     init_OK = False
     while not init_OK:
         try:
-            spatial_vars = zipmap(lambda k: covariance_submodel(k, ra, logp_mesh_dict[k], covariate_key_dict[k], ui_dict[k], input_data, temporal_dict[k]), ['b','0','v'])
+            spatial_vars = zipmap(lambda k: covariance_submodel(k, ra, logp_mesh, covariate_key_dict[k], ui, input_data, temporal_dict[k]), ['b','0','v'])
             tau = zipmap(lambda k: 1./spatial_vars[k]['V'], ['b','0','v'])
         
             # Loop over data clusters, adding nugget and applying link function.
@@ -366,59 +364,41 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
     eps_p_f = {}
         
     # Duffy eps_p_f's and p's, eval'ed everywhere.
-    for k in ['b','0']:    
+    for k in ['b','0','v']:    
         # Nuggeted field
-        eps_p_f[k] = pm.Normal('eps_p_f_%s'%k, spatial_vars[k]['sp_sub'].f_eval[duffy_fi], tau[k], value=np.random.normal(size=len(duffy_data_mesh)), trace=False)
+        eps_p_f[k] = pm.Normal('eps_p_f_%s'%k, spatial_vars[k]['sp_sub'].f_eval[fi], tau[k], value=np.random.normal(size=len(data_mesh)), trace=False)
 
         # The allele frequency
         p[k] = pm.InvLogit('p_%s'%k,eps_p_f[k])
-        
-    # Vivax eps_p_f's and p's, only eval'ed on vivax points.
-    # Nuggeted field
-    eps_p_f['v'] = pm.Normal('eps_p_f_v', spatial_vars[k]['sp_sub'].f_eval[vivax_fi], tau[k], value=np.random.normal(size=len(vivax_data_mesh)), trace=False)
-
-    # The allele frequency
-    p[k] = pm.InvLogit('p_v',eps_p_f['v'])
-            
+                    
     warnings.warn('Not using age correction')
     # junk, splreps = age_corr_likelihoods(lo_age[where_vivax], up_age[where_vivax], vivax_pos[where_vivax], vivax_neg[where_vivax], 10000, np.arange(.01,1.,.01), a_pred, P_trace, S_trace, F_trace)
     # for i in xrange(len(splreps)):
     #     splreps[i] = list(splreps[i])
     splreps = [None]*len(where_vivax[0])
     
-    where_prom = np.where(datatype=='prom')
-    cur_obs = np.array([prom0[where_prom], promab[where_prom]]).T
-    cur_n = n[where_prom]
-    np.testing.assert_equal(cur_n, np.sum(cur_obs,axis=1))
+    import pdb
+    pdb.set_trace
+    
+    cur_obs, cur_n = incorporate_zeros(prom0, n, datatype=='prom')
     # Need to have either b and 0 or a and 1 on both chromosomes    
-    theano_likelihood_prom = theano_binomial(prom0[where_prom], cur_n, p_prom)
+    theano_likelihood_prom = theano_binomial(cur_obs, cur_n, p_prom)
         
-    where_aphe = np.where(datatype=='aphe')
-    cur_obs = np.array([aphea[where_aphe], aphe0[where_aphe]]).T
-    cur_n = n[where_aphe]
-    np.testing.assert_equal(cur_n, np.sum(cur_obs, axis=1))
+    cur_obs, cur_n = incorporate_zeros(aphea, n, datatype=='aphe')
     # Need to have (a and not 1) on either chromosome, or not (not (a and not 1) on both chromosomes.
-    theano_likelihood_aphe = theano_binomial(aphea[where_aphe], cur_n, p_aphe)
+    theano_likelihood_aphe = theano_binomial(cur_obs, cur_n, p_aphe)
         
-    where_bphe = np.where(datatype=='bphe')
-    cur_n = n[where_bphe]
-    cur_obs = np.array([bpheb[where_bphe], bphe0[where_bphe]]).T
-    np.testing.assert_equal(cur_n, np.sum(cur_obs, axis=1))
+    cur_obs, cur_n = incorporate_zeros(bpheb, n, datatype=='bphe')
     # Need to have (b and not 0) on either chromosome
-    theano_likelihood_bphe = theano_binomial(bpheb[where_bphe], cur_n, p_bphe)
+    theano_likelihood_aphe = theano_binomial(cur_obs, cur_n, p_bphe)
         
-    where_phe = np.where(datatype=='phe')
-    cur_obs = np.array([pheab[where_phe],
+    cur_obs, cur_n = incorporate_zeros(np.array([pheab[where_phe],
                         phea[where_phe],
                         pheb[where_phe],
-                        phe0[where_phe]])
-    cur_n = n[where_phe]
-    np.testing.assert_equal(cur_n, np.sum(cur_obs, axis=0))
+                        phe0[where_phe]]).T, n, datatype=='phe')
     theano_likelihood_phe = theano_multinomial(cur_obs, p_phe)
-    
-    where_gen = np.where(datatype=='gen')
-    cur_n = n[where_gen]
-    cur_obs = np.array([genaa[where_gen],
+        
+    cur_obs, cur_n = incorporate_zeros(np.array([genaa[where_gen],
                         genab[where_gen],
                         gena0[where_gen],
                         gena1[where_gen],
@@ -427,17 +407,12 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
                         genb1[where_gen],
                         gen00[where_gen],
                         gen01[where_gen],
-                        gen11[where_gen]])
-    np.testing.assert_equal(cur_n, np.sum(cur_obs,axis=0))
+                        gen11[where_gen]]).T, n, datatype=='gen')
     theano_likelihood_gen = theano_multinomial(cur_obs, p_gen)
     
     # Now vivax.
-    cur_obs = np.array([vivax_pos[where_vivax], vivax_neg[where_vivax]]).T
-    cur_n = np.sum(cur_obs,axis=1)
-    np.testing.assert_equal(cur_n, np.sum(cur_obs,axis=1))
-    # FIXME: Can Theano accept 'wheres'?
-    p_vivax = pv*(1-pphe0[where_vivax])
-    theano_likelihood_vivax = theano_binomial(vivax_pos[where_vivax], cur_n, p_vivax)
+    cur_obs, cur_n = incorporate_zeros(vivax_pos, n, datatype=='vivax')
+    theano_likelihood_vivax = theano_binomial(cur_obs, cur_n, p_vivax)
     
     theano_likelihood = theano_likelihood_prom + theano_likelihood_aphe + theano_likelihood_bphe + theano_likelihood_phe + theano_likelihood_gen + theano_likelihood_vivax
         
