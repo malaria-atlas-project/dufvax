@@ -232,17 +232,17 @@ class DufvaxStep(pm.AdaptiveMetropolis):
             while np.abs(delta).max() > tol:
                 d1, d2 = gf(x,**other_x)
                 
-                d1.fill(0.)
-                d2.fill(0.)
-                
                 like_prec = -d2
-                like_var = 0.*d2+np.inf
-                like_vals = 0.*d2
+                like_var = d2+np.inf
+                like_vals = d2
                 where_nonzero = np.where(d2!=0)
                 like_vals[where_nonzero] = -d1[where_nonzero]/d2[where_nonzero]+x[where_nonzero]
                 like_var[where_nonzero] = 1/like_prec[where_nonzero]
 
                 grad1_full = np.ravel(M*Q)+d1
+                if np.any(np.isnan(d1)) or np.any(np.isnan(d2)):
+                    print 'Got some nans, skipping'
+                    return None, None, None, None
                 Qc = np.asmatrix(Q+np.diag(like_prec))
                 
                 # import pylab as pl
@@ -261,23 +261,23 @@ class DufvaxStep(pm.AdaptiveMetropolis):
                 # pdb.set_trace()
 
                 x_ = linalg.solve(Qc,grad1_full)
-                np.testing.assert_almost_equal(x_,M)
                 delta = x_-x
-                x=x_
+                x=x+delta
 
             # return like_vals, like_vars, Mc, Qc
-            like_vals.fill(0.)
-            like_var.fill(1.e8)
             return like_vals,like_var,x,Qc            
 
         @pm.deterministic(trace=False)
         def S_cond(agfc=approximate_gaussian_full_conditional):
             like_vals, like_vars, Mc, Qc = agfc
-            try:
-                # Sometimes Qc.I is PD but Qc is not, for some reason.
-                return np.linalg.cholesky(Qc.I)
-            except np.linalg.LinAlgError:
+            if Qc is None:
                 return None
+            else:
+                try:
+                    # Sometimes Qc.I is PD but Qc is not, for some reason.
+                    return np.linalg.cholesky(Qc.I)
+                except np.linalg.LinAlgError:
+                    return None
         
         @pm.deterministic(trace=False)
         def evidence(agfc=approximate_gaussian_full_conditional, M=sp_sub.M(data_mesh), C=C_eval_plus_nugget, S_cond=S_cond):
