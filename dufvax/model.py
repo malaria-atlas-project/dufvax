@@ -205,7 +205,9 @@ class DufvaxStep(pm.AdaptiveMetropolis):
         
         self.likelihood_function = tfun([field_plus_nugget]+other_keys, theano_likelihood)
         grads_out = grads(theano_likelihood, field_plus_nugget, theano_to_pymc_fpns.keys())
-        self.grad_function = tfun(theano_to_pymc_fpns.keys(), grads_out)        
+        grad1 = T.grad(theano_likelihood, field_plus_nugget)
+        self.grad1_func = tfun([field_plus_nugget]+other_keys, grad1)
+        self.grad_function = tfun([field_plus_nugget]+other_keys, grads_out)        
         self.field_plus_nugget = theano_to_pymc_fpns[field_plus_nugget]
         
         @pm.deterministic(trace=False)
@@ -221,33 +223,78 @@ class DufvaxStep(pm.AdaptiveMetropolis):
         for k in other_keys:
             other_x[k.name] = theano_to_pymc_fpns[k]
         @pm.deterministic(trace=False)
-        def approximate_gaussian_full_conditional(M=sp_sub.M_eval, Q=Q, gf=self.grad_function, other_x=other_x, tol=1.e-8):
+        def approximate_gaussian_full_conditional(M=sp_sub.M(data_mesh), Q=Q, gf=self.grad_function, g1f=self.grad1_func, other_x=other_x, tol=1.e-8, fpn=self.field_plus_nugget,g1=grad1,lf=self.likelihood_function,fpn_key=field_plus_nugget.name):
+
             from scipy import linalg
-            x=M
+
+            x=fpn
             delta = x*0+np.inf
-            
             while np.abs(delta).max() > tol:
                 d1, d2 = gf(x,**other_x)
-                grad2 = d1-np.ravel(Q*(x-M))
-                Q_ = np.asmatrix(Q-np.diag(d2))
-                delta, precision_products = linalg.solve(Q_,grad2)
-                x = x + delta
                 
-            like_vals = -d1/d2+x-delta
+                d1.fill(0.)
+                d2.fill(0.)
+                
+                like_prec = -d2
+                like_var = 0.*d2+np.inf
+                like_vals = 0.*d2
+                where_nonzero = np.where(d2!=0)
+                like_vals[where_nonzero] = -d1[where_nonzero]/d2[where_nonzero]+x[where_nonzero]
+                like_var[where_nonzero] = 1/like_prec[where_nonzero]
+
+                grad1_full = np.ravel(M*Q)+d1
+                Qc = np.asmatrix(Q+np.diag(like_prec))
+                
+                # import pylab as pl
+                # xplot = np.linspace(-10,10,201)
+                # xi = x.copy()
+                # pl.clf()
+                # j = np.argmax(d2)
+                # yplot = []
+                # for i in xrange(201):
+                #     xi[j] = xplot[i]
+                #     yplot.append(lf(xi,**other_x))
+                # pl.plot(xplot, yplot)
+                # pl.title(d2[j])
+                
+                # import pdb
+                # pdb.set_trace()
+
+                x_ = linalg.solve(Qc,grad1_full)
+                np.testing.assert_almost_equal(x_,M)
+                delta = x_-x
+                x=x_
+
             # return like_vals, like_vars, Mc, Qc
-            return like_vals,-1/d2,x,Q_            
+            like_vals.fill(0.)
+            like_var.fill(1.e8)
+            return like_vals,like_var,x,Qc            
+
+        @pm.deterministic(trace=False)
+        def S_cond(agfc=approximate_gaussian_full_conditional):
+            like_vals, like_vars, Mc, Qc = agfc
+            try:
+                # Sometimes Qc.I is PD but Qc is not, for some reason.
+                return np.linalg.cholesky(Qc.I)
+            except np.linalg.LinAlgError:
+                return None
         
         @pm.deterministic(trace=False)
-        def evidence(agfc=approximate_gaussian_full_conditional, M=sp_sub.M_eval, C=C_eval_plus_nugget):
-            like_vals, like_vars, Mc, Qc = agfc
-            return pm.mv_normal_cov_like(like_vals, M, np.asarray(C)+np.diag(like_vars))
-        
+        def evidence(agfc=approximate_gaussian_full_conditional, M=sp_sub.M(data_mesh), C=C_eval_plus_nugget, S_cond=S_cond):
+            if S_cond is None:
+                return -np.inf
+            else:
+                like_vals, like_vars, Mc, Qc = agfc
+                where_finite = np.where(True-np.isinf(like_vars))
+                return pm.mv_normal_cov_like(like_vals[where_finite], M[where_finite], np.asarray(C[where_finite[0]][:,where_finite[0]])+np.diag(like_vars[where_finite]))
+
         self.Q = Q
         self.approximate_gaussian_full_conditional = approximate_gaussian_full_conditional
         self.evidence = evidence
-        
+        self.C_eval_plus_nugget = C_eval_plus_nugget
+
         pm.AdaptiveMetropolis.__init__(self, stochastic=list(self.prior_params))
-        
+
     def _get_logp_plus_loglike(self):
         sum = pm.logp_of_set(self.prior_params) + self.evidence.value
         if self.verbose>2:
@@ -256,12 +303,12 @@ class DufvaxStep(pm.AdaptiveMetropolis):
 
     # Make get property for retrieving log-probability
     logp_plus_loglike = property(fget = _get_logp_plus_loglike, doc="The summed log-probability of all stochastic variables that depend on \n self.stochastics, and self.stochastics, but not the field or the nuggeted field.")
-            
+
     def step(self):
         from copy import copy
         pm.AdaptiveMetropolis.step(self)
         like_vals, like_vars, Mc, Qc = self.approximate_gaussian_full_conditional.value
-        self.field_plus_nugget.value = pm.rmv_normal(Mc,Qc)
+        self.field_plus_nugget.value = pm.rmv_normal_cov(Mc,Qc.I)
         M, C = copy(self.sp_sub.M.value), copy(self.sp_sub.C.value)
         if self.sp_sub.temporal:
             obs_mesh = self.data_mesh
@@ -278,10 +325,22 @@ def theano_binomial(k, n, p):
     return T.sum(k*T.log(p) + (n-k)*T.log(1-p))
 
 def theano_multinomial(x,p):
-    # FIXME: TEST THIS CAREFULLY!
-    # DO NOT USE theano.dot. It will not work.
-    n = x.shape[1]
-    return T.sum([T.dot(T.log(p[i]),x[:,i]) for i in xrange(n)])
+    return T.sum([T.dot(T.log(p[i]),x[i]) for i in xrange(x.shape[0])])
+
+# # Test multinomial.
+# x1 = np.random.normal(size=(10,51))
+# offsets = np.random.normal(size=10)**2
+# p1 = T.dvector()
+# p2 = T.dvector()
+# ps = [p1+p2*o for o in offsets]
+# mf = tfun([p1,p2], theano_multinomial(x1,ps))
+# 
+# p1_test = np.random.normal(size=51)**2
+# p2_test = np.random.normal(size=51)**2
+# ps_test = np.array([p1_test+p2_test*o for o in offsets])
+# 
+# m2 = np.sum(np.log(ps_test)*x1)
+# np.testing.assert_almost_equal(np.asscalar(mf(p1_test,p2_test)),m2)
 
 def likelihood_expression_to_potential(name, expr, x_theano, x_pymc):
     expr_fn = tfun(expr, x_theano)
@@ -404,13 +463,11 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
             init_OK = False
             gc.collect()        
     
-    V_b, V_0, V_v = [spatial_vars[k]['V'] for k in ['b','0','v']]    
-    
+    V_b, V_0, V_v = [spatial_vars[k]['V'] for k in ['b','0','v']]
     eps_p_f = {}
         
     # Duffy eps_p_f's and p's, eval'ed everywhere.
-    for k in ['b','0','v']:    
-        
+    for k in ['b','0','v']:
         if k in ['b','0']:
             fi = duffy_fi
             data_mesh = duffy_data_mesh
@@ -423,27 +480,22 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
 
     warnings.warn('Not using age correction')
             
-    cur_obs, cur_n = incorporate_zeros(prom0, n, datatype=='prom')
-    # Need to have either b and 0 or a and 1 on both chromosomes    
-    theano_likelihood_prom = theano_binomial(cur_obs, cur_n, p_prom)
+    prom_obs, prom_n = incorporate_zeros(prom0, n, datatype=='prom')
+    theano_likelihood_prom = theano_binomial(prom_obs, prom_n, p_prom)
         
-    cur_obs, cur_n = incorporate_zeros(aphea, n, datatype=='aphe')
-    # Need to have (a and not 1) on either chromosome, or not (not (a and not 1) on both chromosomes.
-    theano_likelihood_aphe = theano_binomial(cur_obs, cur_n, p_aphe)
+    aphe_obs, aphe_n = incorporate_zeros(aphea, n, datatype=='aphe')
+    theano_likelihood_aphe = theano_binomial(aphe_obs, aphe_n, p_aphe)
         
-    cur_obs, cur_n = incorporate_zeros(bpheb, n, datatype=='bphe')
-    # Need to have (b and not 0) on either chromosome
-    theano_likelihood_bphe = theano_binomial(cur_obs, cur_n, p_bphe)
+    bphe_obs, bphe_n = incorporate_zeros(bpheb, n, datatype=='bphe')
+    theano_likelihood_bphe = theano_binomial(bphe_obs, bphe_n, p_bphe)
         
-    cur_obs, cur_n = incorporate_zeros(np.array([pheab,
+    phe_obs, phe_n = incorporate_zeros(np.array([pheab,
                         phea,
                         pheb,
                         phe0]).T, n, datatype=='phe')
-    theano_likelihood_phe = theano_multinomial(cur_obs, p_phe)
-    
-    print T.grad(T.grad(theano_likelihood_phe, x0)[0],x0)
+    theano_likelihood_phe = theano_multinomial(phe_obs.T, p_phe)
         
-    cur_obs, cur_n = incorporate_zeros(np.array([genaa,
+    gen_obs, gen_n = incorporate_zeros(np.array([genaa,
                         genab,
                         gena0,
                         gena1,
@@ -453,19 +505,13 @@ def make_model(lon,lat,t,input_data,covariate_keys,n,datatype,
                         gen00,
                         gen01,
                         gen11]).T, n, datatype=='gen')
-    theano_likelihood_gen = theano_multinomial(cur_obs, p_gen)
-    
-    print T.grad(T.grad(theano_likelihood_gen, x0)[0],x0)
+    theano_likelihood_gen = theano_multinomial(gen_obs.T, p_gen)
     
     # Now vivax.
-    cur_obs, cur_n = incorporate_zeros(vivax_pos, n, datatype=='vivax')
-    theano_vivax_likelihood_for_duffy = theano_binomial(cur_obs, cur_n, p_vivax)
-    theano_vivax_likelihood_for_vivax = theano_binomial(cur_obs[where_vivax], cur_n[where_vivax], p_vivax)
+    vivax_obs, vivax_n = incorporate_zeros(vivax_pos, n, datatype=='vivax')
+    theano_vivax_likelihood_for_duffy = theano_binomial(vivax_obs, vivax_n, p_vivax)
+    theano_vivax_likelihood_for_vivax = theano_binomial(vivax_obs[where_vivax], vivax_n[where_vivax], p_vivax)
     
     theano_duffy_likelihood = theano_likelihood_prom + theano_likelihood_aphe + theano_likelihood_bphe + theano_likelihood_phe + theano_likelihood_gen
-        
-    if np.any(np.isnan(cur_obs)):
-        raise ValueError
-            
     
     return locals()
